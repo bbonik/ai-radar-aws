@@ -1,0 +1,181 @@
+"""Importance Classifier for AWS AI announcements.
+
+Computes a point-based importance score for each announcement by
+combining service tier points, blogpost link presence, and word count.
+Maps the raw score to a star level (1, 2, or 3) using configurable
+thresholds.
+"""
+
+import re
+
+from src.config import Config
+from src.shared.logger import StructuredLogger
+from src.shared.models import RSSItem
+
+
+class ImportanceClassifier:
+    """Classifies announcements by importance using a point-based scoring system.
+
+    The score is computed as:
+        service_tier_points + (blogpost_points if has_links else 0) + (word_count × word_count_scale)
+
+    Service tiers:
+        - High: Amazon Bedrock, Amazon Bedrock AgentCore, Amazon SageMaker AI, Amazon QuickSight
+        - Medium: SageMaker, SageMaker Unified Studio, Kiro
+        - Base: All other relevant services
+
+    Star mapping:
+        - score < threshold_2_star → 1★
+        - threshold_2_star ≤ score < threshold_3_star → 2★
+        - score ≥ threshold_3_star → 3★
+    """
+
+    # Service tier mappings (lowercase for case-insensitive matching)
+    HIGH_TIER_SERVICES = [
+        "amazon bedrock",
+        "amazon bedrock agentcore",
+        "amazon sagemaker ai",
+        "amazon quicksight",
+    ]
+
+    MEDIUM_TIER_SERVICES = [
+        "sagemaker",
+        "sagemaker unified studio",
+        "kiro",
+    ]
+
+    def __init__(self, config: Config, logger: StructuredLogger) -> None:
+        self.config = config
+        self.logger = logger
+
+        # Compile URL pattern for blogpost detection
+        self._url_pattern = re.compile(r"https?://\S+")
+
+    def classify(self, item: RSSItem) -> tuple[int, float]:
+        """Classify an RSS item by importance.
+
+        Args:
+            item: The RSS item to classify.
+
+        Returns:
+            A tuple of (star_level, raw_score) where star_level is 1, 2, or 3.
+        """
+        score = self.compute_score(item)
+        star_level = self._score_to_stars(score)
+
+        self.logger.info(
+            "Importance classification complete",
+            title=item.title,
+            score=score,
+            star_level=star_level,
+            service=self._extract_service(item),
+        )
+
+        return (star_level, score)
+
+    def compute_score(self, item: RSSItem) -> float:
+        """Compute the raw importance score for an item.
+
+        Score = service_tier_points + (blogpost_points if has_links else 0) + (word_count × word_count_scale)
+
+        Args:
+            item: The RSS item to score.
+
+        Returns:
+            The computed importance score as a float.
+        """
+        service_name = self._extract_service(item)
+        service_points = self._get_service_points(service_name)
+
+        has_blogpost = self._has_blogpost_links(item)
+        blogpost_points = self.config.blogpost_points if has_blogpost else 0
+
+        word_count = len(item.description.split())
+        word_count_contribution = word_count * self.config.word_count_scale
+
+        return service_points + blogpost_points + word_count_contribution
+
+    def _extract_service(self, item: RSSItem) -> str:
+        """Extract the AWS service name from the item title or description.
+
+        Checks for known service names in the title first, then falls back
+        to the description. Returns the first matching service name found,
+        or "Other" if no known service is identified.
+
+        Args:
+            item: The RSS item to extract the service from.
+
+        Returns:
+            The identified AWS service name.
+        """
+        text = (item.title + " " + item.description).lower()
+
+        # Check high-tier services first (more specific names first)
+        for service in self.HIGH_TIER_SERVICES:
+            if service in text:
+                return service.title()
+
+        # Check medium-tier services
+        for service in self.MEDIUM_TIER_SERVICES:
+            if service in text:
+                return service.title()
+
+        return "Other"
+
+    def _get_service_points(self, service_name: str) -> int:
+        """Look up the point value for a service tier.
+
+        Args:
+            service_name: The extracted service name (title-cased).
+
+        Returns:
+            The point value for the service's tier.
+        """
+        service_lower = service_name.lower()
+
+        for high_service in self.HIGH_TIER_SERVICES:
+            if high_service == service_lower:
+                return self.config.service_points_high
+
+        for medium_service in self.MEDIUM_TIER_SERVICES:
+            if medium_service == service_lower:
+                return self.config.service_points_medium
+
+        return self.config.service_points_base
+
+    def _has_blogpost_links(self, item: RSSItem) -> bool:
+        """Check if the item description contains external blogpost links.
+
+        Looks for URLs (http:// or https://) in the description that are
+        NOT the AWS whats-new URL (the item's own link).
+
+        Args:
+            item: The RSS item to check.
+
+        Returns:
+            True if external blogpost links are found.
+        """
+        urls = self._url_pattern.findall(item.description)
+
+        for url in urls:
+            # Exclude the item's own AWS whats-new link
+            if not url.startswith("https://aws.amazon.com/about-aws/whats-new/"):
+                return True
+
+        return False
+
+    def _score_to_stars(self, score: float) -> int:
+        """Map a raw score to a star level using configured thresholds.
+
+        Args:
+            score: The raw importance score.
+
+        Returns:
+            Star level: 1, 2, or 3.
+        """
+        if score >= self.config.threshold_3_star:
+            return 3
+        elif score >= self.config.threshold_2_star:
+            return 2
+        else:
+            return 1
