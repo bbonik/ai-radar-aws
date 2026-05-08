@@ -23,7 +23,7 @@ class TestConfigDefaults:
         assert Config().schedule_minute == 0
 
     def test_llm_a_model_id_default(self):
-        assert Config().llm_a_model_id == "us.anthropic.claude-sonnet-4-20250514-v1:0"
+        assert Config().llm_a_model_id == "global.anthropic.claude-sonnet-4-6"
 
     def test_llm_a_temperature_default(self):
         assert Config().llm_a_temperature == 0.3
@@ -35,7 +35,7 @@ class TestConfigDefaults:
         assert Config().llm_a_inference_profile_name == "ai-radar-report-generator"
 
     def test_llm_b_model_id_default(self):
-        assert Config().llm_b_model_id == "us.anthropic.claude-opus-4-20250514-v1:0"
+        assert Config().llm_b_model_id == "global.anthropic.claude-opus-4-6-v1"
 
     def test_llm_b_temperature_default(self):
         assert Config().llm_b_temperature == 0.2
