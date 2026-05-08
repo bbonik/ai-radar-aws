@@ -117,6 +117,22 @@ mypy src/
 
 ## Deployment
 
+### One-command deploy
+
+```bash
+./deploy.sh
+```
+
+That's it. The script handles everything: installs dependencies, runs tests, bootstraps CDK, and deploys.
+
+**Options:**
+```bash
+./deploy.sh --profile my-aws-profile   # Use a specific AWS profile
+./deploy.sh --destroy                  # Tear down the stack
+```
+
+### Manual deploy (if you prefer)
+
 ```bash
 # Bootstrap CDK (first time only)
 cdk bootstrap
