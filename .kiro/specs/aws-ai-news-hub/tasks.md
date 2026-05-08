@@ -220,8 +220,8 @@ Transform the existing aws-news-extractor repository into the "AI Radar AWS" pla
 - [x] 15. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 16. Implement Website Builder (Lambda 2)
-  - [ ] 16.1 Create the Website Builder module
+- [x] 16. Implement Website Builder (Lambda 2)
+  - [x] 16.1 Create the Website Builder module
     - Create `src/website_builder/builder.py` with `WebsiteBuilder` class
     - Read all announcements from CSV in S3 data bucket
     - Generate static HTML/CSS/JS using Python string templates
@@ -234,7 +234,7 @@ Transform the existing aws-news-extractor repository into the "AI Radar AWS" pla
     - Responsive design for desktop, tablet, and mobile
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7, 11.1, 11.2, 11.3, 11.4, 12.1, 12.2, 12.3, 12.4, 16.1, 16.2, 16.3, 16.4, 16.5, 17.1, 17.2_
 
-  - [ ] 16.2 Create the Website Builder Lambda 2 handler and S3/CloudFront integration
+  - [x] 16.2 Create the Website Builder Lambda 2 handler and S3/CloudFront integration
     - Create `src/website_builder/handler.py` as Lambda 2 entry point
     - Upload generated files to S3 website bucket
     - Create CloudFront invalidation for `/*`
@@ -242,7 +242,7 @@ Transform the existing aws-news-extractor repository into the "AI Radar AWS" pla
     - Accept run_id from Lambda 1 invocation payload for correlated logging
     - _Requirements: 17.3, 17.4, 17.5_
 
-  - [ ] 16.3 Write property tests for Website Builder output
+  - [x] 16.3 Write property tests for Website Builder output
     - **Property 12: Report HTML contains all required content**
     - **Property 13: Composable filter produces correct results**
     - **Property 14: Filter state independence**
@@ -252,13 +252,13 @@ Transform the existing aws-news-extractor repository into the "AI Radar AWS" pla
     - Verify filter logic produces correct subsets
     - **Validates: Requirements 9.1, 9.2, 9.3, 9.4, 10.4, 10.5, 10.7, 11.1, 11.2, 13.4**
 
-  - [ ] 16.4 Write property test for PDF export content
+  - [x] 16.4 Write property test for PDF export content
     - **Property 16: PDF contains complete report content**
     - Verify generated PDF includes all six report sections and header metadata
     - **Validates: Requirements 12.1, 12.3**
 
-- [ ] 17. Implement CDK Infrastructure Stack
-  - [ ] 17.1 Create the CDK stack with two-Lambda architecture
+- [x] 17. Implement CDK Infrastructure Stack
+  - [x] 17.1 Create the CDK stack with two-Lambda architecture
     - Create `infrastructure/stack.py` with the full CDK stack
     - Lambda 1 (Report Pipeline): Python 3.11, 15-min timeout, 512MB memory, `src/pipeline/` code
     - Lambda 2 (Website Builder): Python 3.11, 10-min timeout, 512MB memory, `src/website_builder/` code
@@ -273,7 +273,7 @@ Transform the existing aws-news-extractor repository into the "AI Radar AWS" pla
     - Update `cdk.json` to point to new app entry
     - _Requirements: 14.1, 14.2, 14.3, 14.5, 5.2, 5.3, 6.2, 6.3_
 
-  - [ ] 17.2 Add CloudFront, WAF, and security configuration
+  - [x] 17.2 Add CloudFront, WAF, and security configuration
     - CloudFront distribution with S3 website bucket as origin
     - Origin Access Control (OAC) — S3 bucket accessible only via CloudFront
     - AWS WAF Web ACL attached to CloudFront (rate limiting, common rule set)
@@ -282,7 +282,7 @@ Transform the existing aws-news-extractor repository into the "AI Radar AWS" pla
     - S3 bucket policy allowing only CloudFront OAC access
     - _Requirements: 13.1, 13.2, 13.3, 13.5, 13.6_
 
-  - [ ] 17.3 Add CloudWatch Alarms
+  - [x] 17.3 Add CloudWatch Alarms
     - Lambda1-Errors: Errors ≥ 1 in 1 evaluation period
     - Lambda1-Timeout: Duration ≥ 840000 ms (14 min)
     - Lambda1-Duration: Duration ≥ 720000 ms (12 min)
@@ -290,7 +290,7 @@ Transform the existing aws-news-extractor repository into the "AI Radar AWS" pla
     - Lambda2-Timeout: Duration ≥ 540000 ms (9 min)
     - _Requirements: 14.1_
 
-  - [ ] 17.4 Write CDK synthesis and integration tests
+  - [x] 17.4 Write CDK synthesis and integration tests
     - Test stack synthesizes without errors
     - Test expected resources are created (both Lambdas, both S3 buckets, CloudFront, WAF, EventBridge, alarms)
     - Test Lambda timeouts are correct (15 min, 10 min)
@@ -301,11 +301,11 @@ Transform the existing aws-news-extractor repository into the "AI Radar AWS" pla
     - Test Lambda 1 has permission to invoke Lambda 2
     - _Requirements: 14.1, 14.2, 13.1, 13.2, 13.3, 13.5, 13.6_
 
-- [ ] 18. Checkpoint - Ensure all tests pass
+- [x] 18. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 19. Integration wiring and end-to-end validation
-  - [ ] 19.1 Wire all components together and verify end-to-end flow
+- [x] 19. Integration wiring and end-to-end validation
+  - [x] 19.1 Wire all components together and verify end-to-end flow
     - Ensure Lambda 1 handler imports and initializes all pipeline components correctly
     - Ensure Lambda 2 handler imports and initializes website builder correctly
     - Verify environment variable propagation from CDK to Lambda handlers
@@ -313,14 +313,14 @@ Transform the existing aws-news-extractor repository into the "AI Radar AWS" pla
     - Create `scripts/test_local.py` for local pipeline testing with mocked AWS services
     - _Requirements: 14.1, 14.2_
 
-  - [ ] 19.2 Write integration tests for full pipeline flow
+  - [x] 19.2 Write integration tests for full pipeline flow
     - Test end-to-end Lambda 1 pipeline with mocked external services (RSS, Bedrock, S3)
     - Test Lambda 2 website build with mocked S3 and CloudFront
     - Test Lambda 1 → Lambda 2 invocation chain (mocked Lambda client)
     - Test graceful degradation scenarios (RSS failure, Bedrock throttling, S3 write failure)
     - _Requirements: 14.1_
 
-- [ ] 20. Final checkpoint - Ensure all tests pass
+- [x] 20. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

@@ -156,7 +156,7 @@ class GraphGenerator:
         # Use inference profile ARN from environment (set by CDK stack)
         # Falls back to model ID for local testing
         model_id = os.environ.get(
-            "LLM_B_INFERENCE_PROFILE_ARN",
+            "INFERENCE_PROFILE_B_ARN",
             self._config.llm_b_model_id,
         )
 

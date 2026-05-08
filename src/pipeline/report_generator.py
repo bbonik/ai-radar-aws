@@ -127,7 +127,7 @@ class ReportGenerator:
         # Use inference profile ARN from environment (set by CDK stack)
         # Falls back to model ID for local testing
         model_id = os.environ.get(
-            "LLM_A_INFERENCE_PROFILE_ARN",
+            "INFERENCE_PROFILE_A_ARN",
             self._config.llm_a_model_id,
         )
 

@@ -1,0 +1,28 @@
+{
+  "app": "python infrastructure/app.py",
+  "watch": {
+    "include": [
+      "src/**",
+      "infrastructure/**"
+    ],
+    "exclude": [
+      "README.md",
+      "cdk*.json",
+      "requirements*.txt",
+      "tests/**",
+      "**/__pycache__",
+      "**/*.pyc",
+      ".git/**",
+      ".hypothesis/**",
+      ".venv/**"
+    ]
+  },
+  "context": {
+    "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/core:target-partitions": [
+      "aws",
+      "aws-cn"
+    ]
+  }
+}
