@@ -28,13 +28,13 @@ class Config:
     schedule_minute: int = 0
 
     # LLM A - Report Generator (Claude Sonnet)
-    llm_a_model_id: str = "us.anthropic.claude-sonnet-4-20250514-v1:0"
+    llm_a_model_id: str = "global.anthropic.claude-sonnet-4-6"
     llm_a_temperature: float = 0.3
     llm_a_max_tokens: int = 4096
     llm_a_inference_profile_name: str = "ai-radar-report-generator"
 
     # LLM B - Graph Generator (Claude Opus)
-    llm_b_model_id: str = "us.anthropic.claude-opus-4-20250514-v1:0"
+    llm_b_model_id: str = "global.anthropic.claude-opus-4-6-v1"
     llm_b_temperature: float = 0.2
     llm_b_max_tokens: int = 2048
     llm_b_inference_profile_name: str = "ai-radar-graph-generator"
