@@ -303,12 +303,21 @@ class AiRadarAwsStack(Stack):
         self.website_builder_lambda.grant_invoke(self.report_pipeline_lambda)
 
         # Lambda 1: invoke Bedrock models via inference profiles
+        # Bedrock requires permissions on both the application inference profile
+        # AND the underlying foundation models/system inference profiles
         self.report_pipeline_lambda.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["bedrock:InvokeModel"],
                 resources=[
+                    # Application inference profiles (created by this stack)
                     self.inference_profile_a.get_att("InferenceProfileArn").to_string(),
                     self.inference_profile_b.get_att("InferenceProfileArn").to_string(),
+                    # System-defined cross-region inference profiles
+                    f"arn:aws:bedrock:*::inference-profile/{config.llm_a_model_id}",
+                    f"arn:aws:bedrock:*::inference-profile/{config.llm_b_model_id}",
+                    # Underlying foundation models (Bedrock resolves to these)
+                    "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-6",
+                    "arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-4-6-v1",
                 ],
             )
         )
