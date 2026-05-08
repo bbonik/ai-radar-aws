@@ -124,5 +124,5 @@ if [ -n "$WEBSITE_URL" ]; then
 fi
 
 echo -e "The pipeline will run daily at the configured schedule."
-echo -e "To trigger it manually:"
-echo -e "  aws lambda invoke --function-name ai-radar-report-pipeline $PROFILE_ARG /dev/null"
+echo -e "To trigger it manually (runs async, check CloudWatch Logs for results):"
+echo -e "  aws lambda invoke --function-name ai-radar-report-pipeline --invocation-type Event $PROFILE_ARG /dev/null"
