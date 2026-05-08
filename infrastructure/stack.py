@@ -68,6 +68,8 @@ class AiRadarAwsStack(Stack):
 
         # ─── Bedrock Application Inference Profiles ───────────────────────
         # LLM A - Report Generator (Claude Sonnet)
+        # Model IDs like "us.anthropic.claude-sonnet-4-..." are cross-region
+        # inference profile IDs, so CopyFrom uses the inference-profile ARN format
         self.inference_profile_a = CfnResource(
             self,
             "InferenceProfileA",
@@ -75,7 +77,7 @@ class AiRadarAwsStack(Stack):
             properties={
                 "InferenceProfileName": config.llm_a_inference_profile_name,
                 "ModelSource": {
-                    "CopyFrom": f"arn:aws:bedrock:{config.aws_region}::foundation-model/{config.llm_a_model_id}",
+                    "CopyFrom": f"arn:aws:bedrock:{config.aws_region}::inference-profile/{config.llm_a_model_id}",
                 },
                 "Tags": [
                     {"Key": "Project", "Value": "ai-radar-aws"},
@@ -93,7 +95,7 @@ class AiRadarAwsStack(Stack):
             properties={
                 "InferenceProfileName": config.llm_b_inference_profile_name,
                 "ModelSource": {
-                    "CopyFrom": f"arn:aws:bedrock:{config.aws_region}::foundation-model/{config.llm_b_model_id}",
+                    "CopyFrom": f"arn:aws:bedrock:{config.aws_region}::inference-profile/{config.llm_b_model_id}",
                 },
                 "Tags": [
                     {"Key": "Project", "Value": "ai-radar-aws"},
@@ -218,10 +220,7 @@ class AiRadarAwsStack(Stack):
         )
 
         # ─── CloudFront Distribution with OAC ─────────────────────────────
-        # S3 bucket accessible only via CloudFront Origin Access Control
-        # Note: Using S3Origin which creates an OAI (Origin Access Identity)
-        # and automatically configures the bucket policy to allow only
-        # CloudFront access. OAI is the CDK 2.100.0 equivalent of OAC.
+        # S3 bucket accessible only via CloudFront
         self.distribution = cloudfront.Distribution(
             self,
             "WebsiteDistribution",
