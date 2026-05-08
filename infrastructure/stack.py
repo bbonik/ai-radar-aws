@@ -17,6 +17,7 @@ Requirements: 14.1, 14.2, 14.3, 14.5, 5.2, 5.3, 6.2, 6.3, 13.1, 13.2, 13.3, 13.5
 
 from aws_cdk import (
     Aws,
+    CfnOutput,
     Duration,
     RemovalPolicy,
     Stack,
@@ -392,4 +393,18 @@ class AiRadarAwsStack(Stack):
             evaluation_periods=1,
             comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
             alarm_description="Lambda 2 approaching 10-min limit",
+        )
+
+        # ─── Stack Outputs ────────────────────────────────────────────────
+        CfnOutput(
+            self,
+            "WebsiteUrl",
+            value=f"https://{self.distribution.distribution_domain_name}",
+            description="AI Radar AWS website URL",
+        )
+        CfnOutput(
+            self,
+            "CloudFrontDistributionId",
+            value=self.distribution.distribution_id,
+            description="CloudFront distribution ID",
         )

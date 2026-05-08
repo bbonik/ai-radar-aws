@@ -115,9 +115,14 @@ echo -e "${GREEN}╔════════════════════
 echo -e "${GREEN}║         ✓ Deployment Complete!           ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════╝${NC}"
 echo ""
+
+# Show the website URL from stack outputs
+WEBSITE_URL=$(aws cloudformation describe-stacks --stack-name AiRadarAwsStack $PROFILE_ARG --query 'Stacks[0].Outputs[?OutputKey==`WebsiteUrl`].OutputValue' --output text 2>/dev/null)
+if [ -n "$WEBSITE_URL" ]; then
+    echo -e "${GREEN}🌐 Website URL: $WEBSITE_URL${NC}"
+    echo ""
+fi
+
 echo -e "The pipeline will run daily at the configured schedule."
 echo -e "To trigger it manually:"
 echo -e "  aws lambda invoke --function-name ai-radar-report-pipeline $PROFILE_ARG /dev/null"
-echo ""
-echo -e "To find your CloudFront URL:"
-echo -e "  aws cloudfront list-distributions $PROFILE_ARG --query 'DistributionList.Items[?Comment==\`\`].DomainName' --output text"
