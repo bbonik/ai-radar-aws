@@ -131,6 +131,20 @@ That's it. The script handles everything: installs dependencies, runs tests, boo
 ./deploy.sh --destroy                  # Tear down the stack
 ```
 
+### Rebuild website after code changes
+
+```bash
+./rebuild-site.sh
+```
+
+Deploys updated Lambda code and triggers the website builder to regenerate the site.
+
+**Options:**
+```bash
+./rebuild-site.sh --skip-cdk   # Just rebuild website (no CDK deploy, fastest)
+./rebuild-site.sh --pipeline   # Full pipeline: fetch new news + reports + rebuild
+```
+
 ### Manual deploy (if you prefer)
 
 ```bash
