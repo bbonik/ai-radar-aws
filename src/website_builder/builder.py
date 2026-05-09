@@ -1140,8 +1140,8 @@ JS_TEMPLATE = """\
   'use strict';
 
   // Announcement data injected at build time
-  var announcements = /*__ANNOUNCEMENTS_DATA__*/[];
-  var timelineData = /*__TIMELINE_DATA__*/{};
+  var announcements = /*__ANNOUNCEMENTS_DATA__*/;
+  var timelineData = /*__TIMELINE_DATA__*/;
 
   // Filter state
   var filters = {
