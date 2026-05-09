@@ -31,12 +31,50 @@ def _sanitize_html(text: str) -> str:
 
 
 def _format_date_display(date_str: str) -> str:
-    """Convert YYYY-MM-DD date string to DD/MM/YYYY for display."""
-    if len(date_str) >= 10:
+    """Convert a date string to DD/MM/YYYY for display.
+    
+    Handles:
+    - YYYY-MM-DD (ISO format)
+    - RFC 2822 format (e.g., 'Wed, 29 Apr 2026 22:00:00 GMT')
+    - Any other format (returned as-is)
+    """
+    from email.utils import parsedate_to_datetime
+    
+    # Try ISO format first (YYYY-MM-DD)
+    if len(date_str) >= 10 and date_str[4:5] == "-" and date_str[7:8] == "-":
         parts = date_str[:10].split("-")
         if len(parts) == 3:
             return f"{parts[2]}/{parts[1]}/{parts[0]}"
+    
+    # Try RFC 2822 format
+    try:
+        dt = parsedate_to_datetime(date_str)
+        return dt.strftime("%d/%m/%Y")
+    except (ValueError, TypeError):
+        pass
+    
     return date_str
+
+
+def _extract_date_sortable(date_str: str) -> str:
+    """Extract a YYYY-MM-DD sortable date from various formats.
+    
+    Used for data-date attributes and JS filtering.
+    """
+    from email.utils import parsedate_to_datetime
+    
+    # Already ISO format
+    if len(date_str) >= 10 and date_str[4:5] == "-" and date_str[7:8] == "-":
+        return date_str[:10]
+    
+    # Try RFC 2822 format
+    try:
+        dt = parsedate_to_datetime(date_str)
+        return dt.strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        pass
+    
+    return date_str[:10] if len(date_str) >= 10 else date_str
 
 
 def _markdown_to_html(text: str) -> str:
@@ -289,7 +327,7 @@ class WebsiteBuilder:
             lambda: {"star1": 0, "star2": 0, "star3": 0}
         )
         for a in announcements:
-            date_str = a.pub_date[:10] if len(a.pub_date) >= 10 else a.pub_date
+            date_str = _extract_date_sortable(a.pub_date)
             day_counts[date_str][f"star{a.importance_level}"] += 1
 
         sorted_dates = sorted(day_counts.keys())
@@ -327,9 +365,9 @@ class WebsiteBuilder:
         stars = "\u2605" * a.importance_level + "\u2606" * (3 - a.importance_level)
         title_safe = _sanitize_html(a.title)
         service_safe = _sanitize_html(a.aws_service)
-        date_raw = a.pub_date[:10] if len(a.pub_date) >= 10 else a.pub_date
-        date_attr_safe = _sanitize_html(date_raw)
-        date_display = _format_date_display(date_raw)
+        date_sortable = _extract_date_sortable(a.pub_date)
+        date_attr_safe = _sanitize_html(date_sortable)
+        date_display = _format_date_display(a.pub_date)
         summary_safe = _sanitize_html(a.report.whats_new[:200])
 
         return (
@@ -357,8 +395,7 @@ class WebsiteBuilder:
         stars = "\u2605" * a.importance_level + "\u2606" * (3 - a.importance_level)
         title_safe = _sanitize_html(a.title)
         service_safe = _sanitize_html(a.aws_service)
-        date_raw = a.pub_date[:10] if len(a.pub_date) >= 10 else a.pub_date
-        date_display = _format_date_display(date_raw)
+        date_display = _format_date_display(a.pub_date)
         link_safe = _sanitize_html(a.link)
 
         # Sanitize report text first, then convert to HTML
