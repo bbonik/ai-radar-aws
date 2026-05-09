@@ -66,12 +66,12 @@ Link: {link}
 Produce a report with the following six sections. Use clear, concise language \
 suitable for a technical audience. Each section should be a well-formed paragraph.
 
-1. **What's New**: A concise summary of what was announced (2-3 sentences).
-2. **How It Works**: A technical explanation of how the feature or service operates.
-3. **Why It's Important**: The significance and practical implications for AWS users.
-4. **How It's Different**: How this compares to previous capabilities or alternatives.
-5. **When to Prefer It**: Guidance on when and why to choose this over other options.
-6. **Availability**: GA/Preview status, supported regions, and any limitations.
+1. **What's New**: A concise summary of what was announced (2-3 sentences of flowing prose).
+2. **How It Works**: A technical explanation using bullet points (each starting with '- '). Each bullet should be a complete thought covering one aspect of how it works.
+3. **Why It's Important**: The significance and practical implications using bullet points. Each bullet covers one reason or implication.
+4. **How It's Different**: Comparison points using bullet points. Each bullet highlights one difference or advantage.
+5. **When to Prefer It**: Guidance using bullet points. Each bullet describes a scenario or use case.
+6. **Availability**: Status and regions using bullet points. Include GA/Preview status, supported regions, pricing model, and any limitations as separate bullets.
 
 ## Output Format
 Return your response using exactly these section headers:
@@ -114,7 +114,7 @@ Service: {aws_service}
 
 ## Instructions
 Create a Mermaid diagram (using graph TD or graph LR syntax) that shows:
-- The announced service/feature as the central node
+- The announced service/feature as the central node, highlighted with orange color always
 - Related AWS services it integrates with
 - Data flow or interaction patterns
 - Where it fits in a typical AI/ML workflow
@@ -123,7 +123,9 @@ Use the research context to identify specific integrations, data flows, and \
 architectural patterns mentioned in the documentation. This will help produce \
 a more accurate and detailed diagram.
 
-Keep the diagram focused and readable (5-12 nodes maximum). Use clear, short labels.
+Keep the diagram focused and readable (5-12 nodes maximum). 
+Use clear, short labels. 
+Utilize color coding (similar attributes/features/services share the same color), arrows, diffierent types of lines etc., to signify relationships in the diagram.
 
 ## Output Format
 Return ONLY the Mermaid diagram code, starting with ```mermaid and ending with ```.

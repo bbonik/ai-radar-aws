@@ -239,9 +239,15 @@ def test_property16_header_metadata_in_report_content_div(
         "Announcement title missing from #report-content div (won't appear in PDF header)"
     )
 
-    # Date must be within the report-content div
+    # Date must be within the report-content div (displayed as DD/MM/YYYY)
     date_str = announcement.pub_date[:10] if len(announcement.pub_date) >= 10 else announcement.pub_date
-    assert _sanitize_html(date_str) in report_content_div, (
+    # Convert to DD/MM/YYYY format as displayed
+    parts = date_str.split("-")
+    if len(parts) == 3:
+        display_date = f"{parts[2]}/{parts[1]}/{parts[0]}"
+    else:
+        display_date = date_str
+    assert display_date in report_content_div, (
         "Publication date missing from #report-content div (won't appear in PDF header)"
     )
 

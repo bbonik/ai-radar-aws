@@ -30,6 +30,126 @@ def _sanitize_html(text: str) -> str:
     return html.escape(text, quote=True)
 
 
+def _format_date_display(date_str: str) -> str:
+    """Convert YYYY-MM-DD date string to DD/MM/YYYY for display."""
+    if len(date_str) >= 10:
+        parts = date_str[:10].split("-")
+        if len(parts) == 3:
+            return f"{parts[2]}/{parts[1]}/{parts[0]}"
+    return date_str
+
+
+def _markdown_to_html(text: str) -> str:
+    """Convert simple markdown-like text to HTML.
+
+    Handles:
+    - **bold** -> <strong>bold</strong>
+    - *italic* -> <em>italic</em>
+    - Lines starting with '- ' or '• ' -> <li> items wrapped in <ul>
+    - Blank lines -> paragraph breaks
+
+    Input text should already be sanitized via _sanitize_html.
+    """
+    if not text:
+        return "<p></p>"
+
+    # Split into lines
+    lines = text.split("\n")
+    result_blocks: list[str] = []
+    current_list: list[str] = []
+    current_paragraph: list[str] = []
+
+    def flush_paragraph():
+        if current_paragraph:
+            para_text = " ".join(current_paragraph)
+            para_text = _apply_inline_formatting(para_text)
+            result_blocks.append(f"<p>{para_text}</p>")
+            current_paragraph.clear()
+
+    def flush_list():
+        if current_list:
+            items = "".join(f"<li>{_apply_inline_formatting(item)}</li>" for item in current_list)
+            result_blocks.append(f"<ul>{items}</ul>")
+            current_list.clear()
+
+    for line in lines:
+        stripped = line.strip()
+
+        if not stripped:
+            # Blank line: flush current context
+            flush_paragraph()
+            flush_list()
+            continue
+
+        # Check for bullet point lines
+        if stripped.startswith("- ") or stripped.startswith("&bull; ") or stripped.startswith("• "):
+            flush_paragraph()
+            # Remove the bullet prefix
+            if stripped.startswith("- "):
+                item_text = stripped[2:]
+            elif stripped.startswith("&bull; "):
+                item_text = stripped[7:]
+            else:
+                item_text = stripped[2:]
+            current_list.append(item_text)
+        else:
+            flush_list()
+            current_paragraph.append(stripped)
+
+    # Flush remaining
+    flush_paragraph()
+    flush_list()
+
+    return "".join(result_blocks) if result_blocks else "<p></p>"
+
+
+def _apply_inline_formatting(text: str) -> str:
+    """Apply inline markdown formatting (bold, italic) to text.
+
+    Expects already-sanitized text (no raw HTML special chars).
+    """
+    # Bold: **text** -> <strong>text</strong>
+    text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
+    # Italic: *text* -> <em>text</em>
+    text = re.sub(r"\*(.+?)\*", r"<em>\1</em>", text)
+    return text
+
+
+def _text_to_bullet_html(text: str) -> str:
+    """Convert plain text to bullet-point HTML for report sections.
+
+    If text already contains bullet points (lines starting with '- ' or '• '),
+    use _markdown_to_html directly. Otherwise, split sentences into bullets.
+
+    Input text should already be sanitized via _sanitize_html.
+    """
+    if not text or not text.strip():
+        return "<p></p>"
+
+    # Check if text already has bullet points
+    has_bullets = any(
+        line.strip().startswith("- ") or line.strip().startswith("&bull; ") or line.strip().startswith("• ")
+        for line in text.split("\n")
+        if line.strip()
+    )
+
+    if has_bullets or "\n" in text:
+        return _markdown_to_html(text)
+
+    # Split on '. ' followed by a capital letter, or on newlines
+    # This regex splits on period-space-capital pattern
+    sentences = re.split(r"(?<=\.)\s+(?=[A-Z])", text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+
+    if len(sentences) <= 1:
+        # Single sentence - just apply inline formatting
+        return f"<p>{_apply_inline_formatting(text)}</p>"
+
+    # Multiple sentences -> bullet points
+    items = "".join(f"<li>{_apply_inline_formatting(s)}</li>" for s in sentences)
+    return f"<ul>{items}</ul>"
+
+
 def _slug_from_link(link: str) -> str:
     """Generate a URL-safe slug from an announcement link."""
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", link)
@@ -207,17 +327,19 @@ class WebsiteBuilder:
         stars = "\u2605" * a.importance_level + "\u2606" * (3 - a.importance_level)
         title_safe = _sanitize_html(a.title)
         service_safe = _sanitize_html(a.aws_service)
-        date_safe = _sanitize_html(a.pub_date[:10] if len(a.pub_date) >= 10 else a.pub_date)
+        date_raw = a.pub_date[:10] if len(a.pub_date) >= 10 else a.pub_date
+        date_attr_safe = _sanitize_html(date_raw)
+        date_display = _format_date_display(date_raw)
         summary_safe = _sanitize_html(a.report.whats_new[:200])
 
         return (
             f'<article class="announcement-card" '
-            f'data-date="{date_safe}" '
+            f'data-date="{date_attr_safe}" '
             f'data-service="{service_safe}" '
             f'data-importance="{a.importance_level}">\n'
             f'  <div class="card-header">\n'
             f'    <span class="card-stars importance-{a.importance_level}">{stars}</span>\n'
-            f'    <span class="card-date">{date_safe}</span>\n'
+            f'    <span class="card-date">{date_display}</span>\n'
             f'  </div>\n'
             f'  <h3 class="card-title"><a href="reports/{slug}.html">{title_safe}</a></h3>\n'
             f'  <p class="card-service">{service_safe}</p>\n'
@@ -235,15 +357,25 @@ class WebsiteBuilder:
         stars = "\u2605" * a.importance_level + "\u2606" * (3 - a.importance_level)
         title_safe = _sanitize_html(a.title)
         service_safe = _sanitize_html(a.aws_service)
-        date_safe = _sanitize_html(a.pub_date[:10] if len(a.pub_date) >= 10 else a.pub_date)
+        date_raw = a.pub_date[:10] if len(a.pub_date) >= 10 else a.pub_date
+        date_display = _format_date_display(date_raw)
         link_safe = _sanitize_html(a.link)
 
+        # Sanitize report text first, then convert to HTML
         whats_new_safe = _sanitize_html(a.report.whats_new)
         how_it_works_safe = _sanitize_html(a.report.how_it_works)
         why_important_safe = _sanitize_html(a.report.why_important)
         how_different_safe = _sanitize_html(a.report.how_different)
         when_to_prefer_safe = _sanitize_html(a.report.when_to_prefer)
         availability_safe = _sanitize_html(a.report.availability)
+
+        # What's New stays as a paragraph; other sections get bullet formatting
+        whats_new_html = f"<p>{_apply_inline_formatting(whats_new_safe)}</p>"
+        how_it_works_html = _text_to_bullet_html(how_it_works_safe)
+        why_important_html = _text_to_bullet_html(why_important_safe)
+        how_different_html = _text_to_bullet_html(how_different_safe)
+        when_to_prefer_html = _text_to_bullet_html(when_to_prefer_safe)
+        availability_html = _text_to_bullet_html(availability_safe)
 
         mermaid_section = ""
         if a.mermaid_graph:
@@ -273,16 +405,16 @@ class WebsiteBuilder:
             REPORT_TEMPLATE
             .replace("{{TITLE}}", title_safe)
             .replace("{{SERVICE}}", service_safe)
-            .replace("{{DATE}}", date_safe)
+            .replace("{{DATE}}", date_display)
             .replace("{{STARS}}", stars)
             .replace("{{IMPORTANCE_LEVEL}}", str(a.importance_level))
             .replace("{{LINK}}", link_safe)
-            .replace("{{WHATS_NEW}}", whats_new_safe)
-            .replace("{{HOW_IT_WORKS}}", how_it_works_safe)
-            .replace("{{WHY_IMPORTANT}}", why_important_safe)
-            .replace("{{HOW_DIFFERENT}}", how_different_safe)
-            .replace("{{WHEN_TO_PREFER}}", when_to_prefer_safe)
-            .replace("{{AVAILABILITY}}", availability_safe)
+            .replace("{{WHATS_NEW}}", whats_new_html)
+            .replace("{{HOW_IT_WORKS}}", how_it_works_html)
+            .replace("{{WHY_IMPORTANT}}", why_important_html)
+            .replace("{{HOW_DIFFERENT}}", how_different_html)
+            .replace("{{WHEN_TO_PREFER}}", when_to_prefer_html)
+            .replace("{{AVAILABILITY}}", availability_html)
             .replace("{{MERMAID_SECTION}}", mermaid_section)
             .replace("{{BLOGPOST_LINKS}}", blogpost_links_html)
         )
@@ -764,6 +896,124 @@ body {
   display: none;
 }
 
+/* Report section lists (I1) */
+.report-section ul {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+}
+
+.report-section ul li {
+  position: relative;
+  padding: 0.4rem 0 0.4rem 1.5rem;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--aws-text);
+}
+
+.report-section ul li::before {
+  content: "\\25B8";
+  position: absolute;
+  left: 0;
+  color: var(--aws-orange);
+  font-size: 0.85rem;
+  top: 0.5rem;
+}
+
+.report-section ul li + li {
+  border-top: 1px solid var(--aws-light);
+}
+
+/* About Modal (I2) */
+.about-modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+}
+
+.about-modal-overlay.active {
+  display: flex;
+}
+
+.about-modal {
+  background: var(--aws-white);
+  border-radius: var(--radius);
+  max-width: 640px;
+  width: 90%;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 2rem;
+  position: relative;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.about-modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--aws-text-secondary);
+  line-height: 1;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: var(--transition);
+}
+
+.about-modal-close:hover {
+  background: var(--aws-light);
+  color: var(--aws-text);
+}
+
+.about-modal h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--aws-dark);
+  margin-bottom: 1rem;
+}
+
+.about-modal h2 span {
+  color: var(--aws-orange);
+}
+
+.about-modal p {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--aws-text);
+  margin-bottom: 1rem;
+}
+
+.about-modal ol {
+  padding-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.about-modal ol li {
+  font-size: 0.9rem;
+  line-height: 1.8;
+  color: var(--aws-text);
+  padding: 0.2rem 0;
+}
+
+.about-modal .highlight-box {
+  background: var(--aws-light);
+  border-left: 3px solid var(--aws-orange);
+  padding: 0.75rem 1rem;
+  border-radius: 0 4px 4px 0;
+  margin: 1rem 0;
+  font-size: 0.9rem;
+  color: var(--aws-text-secondary);
+}
+
 /* Responsive Design */
 @media (max-width: 1024px) {
   .announcements-grid {
@@ -871,10 +1121,16 @@ JS_TEMPLATE = """\
   var rankCheckbox = document.getElementById('filter-rank');
   var resetBtn = document.getElementById('filter-reset');
 
-  // Initialize
-  document.addEventListener('DOMContentLoaded', function() {
-    initFilters();
-    initTimeline();
+  // Initialize immediately (script is at bottom of body, DOM is ready)
+  initFilters();
+  initTimeline();
+
+  // Fallback: if Chart.js was not ready, retry on window load
+  window.addEventListener('load', function() {
+    var ctx = document.getElementById('timeline-chart');
+    if (ctx && !ctx._chartInitialized) {
+      initTimeline();
+    }
   });
 
   function initFilters() {
@@ -977,6 +1233,8 @@ JS_TEMPLATE = """\
     var ctx = document.getElementById('timeline-chart');
     if (!ctx || !window.Chart || !timelineData.labels) return;
 
+    ctx._chartInitialized = true;
+
     new Chart(ctx, {
       type: 'bar',
       data: {
@@ -1050,6 +1308,34 @@ JS_TEMPLATE = """\
     html2pdf().set(opt).from(element).save();
   };
 
+  // About Modal
+  window.openAboutModal = function() {
+    var overlay = document.getElementById('about-modal-overlay');
+    if (overlay) overlay.classList.add('active');
+  };
+
+  window.closeAboutModal = function() {
+    var overlay = document.getElementById('about-modal-overlay');
+    if (overlay) overlay.classList.remove('active');
+  };
+
+  // Close modal on overlay click
+  var aboutOverlay = document.getElementById('about-modal-overlay');
+  if (aboutOverlay) {
+    aboutOverlay.addEventListener('click', function(e) {
+      if (e.target === aboutOverlay) {
+        window.closeAboutModal();
+      }
+    });
+  }
+
+  // Close modal on Escape key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      window.closeAboutModal();
+    }
+  });
+
 })();
 """
 
@@ -1078,6 +1364,7 @@ INDEX_TEMPLATE = """\
         <a href="#filters">Filters</a>
         <a href="#timeline">Timeline</a>
         <a href="#announcements">News</a>
+        <a href="#" onclick="openAboutModal(); return false;">About</a>
       </nav>
     </div>
   </header>
@@ -1134,6 +1421,28 @@ INDEX_TEMPLATE = """\
     <p>AI Radar AWS &mdash; Automatically curated AWS AI/ML news. Generated daily.</p>
   </footer>
 
+  <!-- About Modal -->
+  <div class="about-modal-overlay" id="about-modal-overlay">
+    <div class="about-modal">
+      <button class="about-modal-close" onclick="closeAboutModal()" aria-label="Close">&times;</button>
+      <h2>About AI Radar <span>AWS</span></h2>
+      <p>AI Radar AWS is an automated curation platform for AWS AI and Machine Learning news. It monitors, filters, researches, and summarizes announcements so you can stay informed without the noise.</p>
+      <p><strong>Methodology:</strong></p>
+      <ol>
+        <li>RSS feed monitoring of the AWS What&#x27;s New feed</li>
+        <li>AI-powered relevance filtering to identify AI/ML announcements</li>
+        <li>Importance classification using a 1-3 star rating system</li>
+        <li>Research phase: follows links to blog posts and documentation for deeper context</li>
+        <li>LLM-powered report generation producing 6 structured sections per announcement</li>
+        <li>Architecture diagram generation for high-importance items</li>
+        <li>Daily automated publishing to this static website</li>
+      </ol>
+      <div class="highlight-box">
+        Each report involves a dedicated research phase where the system reads linked blog posts and AWS documentation pages to provide accurate, in-depth analysis beyond the original announcement text.
+      </div>
+    </div>
+  </div>
+
   <script src="assets/app.js"></script>
 </body>
 </html>
@@ -1163,6 +1472,7 @@ REPORT_TEMPLATE = """\
       </a>
       <nav class="header-nav">
         <a href="../index.html">Home</a>
+        <a href="#" onclick="openAboutModal(); return false;">About</a>
       </nav>
     </div>
   </header>
@@ -1186,32 +1496,32 @@ REPORT_TEMPLATE = """\
 
       <section class="report-section">
         <h2>What&#x27;s New</h2>
-        <p>{{WHATS_NEW}}</p>
+        {{WHATS_NEW}}
       </section>
 
       <section class="report-section">
         <h2>How It Works</h2>
-        <p>{{HOW_IT_WORKS}}</p>
+        {{HOW_IT_WORKS}}
       </section>
 
       <section class="report-section">
         <h2>Why It&#x27;s Important</h2>
-        <p>{{WHY_IMPORTANT}}</p>
+        {{WHY_IMPORTANT}}
       </section>
 
       <section class="report-section">
         <h2>How It&#x27;s Different</h2>
-        <p>{{HOW_DIFFERENT}}</p>
+        {{HOW_DIFFERENT}}
       </section>
 
       <section class="report-section">
         <h2>When to Prefer It</h2>
-        <p>{{WHEN_TO_PREFER}}</p>
+        {{WHEN_TO_PREFER}}
       </section>
 
       <section class="report-section">
         <h2>Availability</h2>
-        <p>{{AVAILABILITY}}</p>
+        {{AVAILABILITY}}
       </section>
 
       {{MERMAID_SECTION}}
@@ -1222,6 +1532,28 @@ REPORT_TEMPLATE = """\
   <footer class="site-footer">
     <p>AI Radar AWS &mdash; Automatically curated AWS AI/ML news. Generated daily.</p>
   </footer>
+
+  <!-- About Modal -->
+  <div class="about-modal-overlay" id="about-modal-overlay">
+    <div class="about-modal">
+      <button class="about-modal-close" onclick="closeAboutModal()" aria-label="Close">&times;</button>
+      <h2>About AI Radar <span>AWS</span></h2>
+      <p>AI Radar AWS is an automated curation platform for AWS AI and Machine Learning news. It monitors, filters, researches, and summarizes announcements so you can stay informed without the noise.</p>
+      <p><strong>Methodology:</strong></p>
+      <ol>
+        <li>RSS feed monitoring of the AWS What&#x27;s New feed</li>
+        <li>AI-powered relevance filtering to identify AI/ML announcements</li>
+        <li>Importance classification using a 1-3 star rating system</li>
+        <li>Research phase: follows links to blog posts and documentation for deeper context</li>
+        <li>LLM-powered report generation producing 6 structured sections per announcement</li>
+        <li>Architecture diagram generation for high-importance items</li>
+        <li>Daily automated publishing to this static website</li>
+      </ol>
+      <div class="highlight-box">
+        Each report involves a dedicated research phase where the system reads linked blog posts and AWS documentation pages to provide accurate, in-depth analysis beyond the original announcement text.
+      </div>
+    </div>
+  </div>
 
   <script src="../assets/app.js"></script>
   <script>

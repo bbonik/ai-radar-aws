@@ -173,9 +173,15 @@ def test_property12_report_html_contains_all_required_content(
         "Announcement title missing from report HTML"
     )
 
-    # Publication date must be present (first 10 chars)
+    # Publication date must be present (DD/MM/YYYY display format)
     date_str = announcement.pub_date[:10]
-    assert _sanitize_html(date_str) in report_html, (
+    # Date is now displayed as DD/MM/YYYY
+    parts = date_str.split("-")
+    if len(parts) == 3:
+        date_display = f"{parts[2]}/{parts[1]}/{parts[0]}"
+    else:
+        date_display = date_str
+    assert date_display in report_html, (
         "Publication date missing from report HTML"
     )
 

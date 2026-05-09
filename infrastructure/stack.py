@@ -199,10 +199,10 @@ class AiRadarAwsStack(Stack):
                 content_security_policy=cloudfront.ResponseHeadersContentSecurityPolicy(
                     content_security_policy=(
                         "default-src 'self'; "
-                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
+                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
                         "style-src 'self' 'unsafe-inline'; "
                         "img-src 'self' data:; "
-                        "connect-src 'self'"
+                        "connect-src 'self' https://cdnjs.cloudflare.com"
                     ),
                     override=True,
                 ),
