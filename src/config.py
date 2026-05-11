@@ -55,9 +55,9 @@ class Config:
     threshold_3_star: float = 5.0     # Score >= this -> 3-star
 
     # Tag-based scoring bonuses (applied when tags are available)
-    tag_bonus_new_model: float = 2.0      # Bonus for "new-model" type tag
-    tag_bonus_new_service: float = 1.5    # Bonus for "new-service" type tag
-    tag_bonus_ga_launch: float = 1.0      # Bonus for "ga-launch" type tag
+    tag_bonus_new_model: float = 1.0      # Bonus for "new-model" type tag
+    tag_bonus_new_service: float = 0.5    # Bonus for "new-service" type tag
+    tag_bonus_ga_launch: float = 0.1      # Bonus for "ga-launch" type tag
 
     # Prompt Templates
     report_prompt_template: str = field(default="""\

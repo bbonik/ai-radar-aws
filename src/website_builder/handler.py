@@ -92,6 +92,13 @@ def handler(event: dict, context) -> dict:
             files=files,
         )
 
+        # Upload logo images from the Lambda code package
+        _upload_logo_images(
+            s3_client=s3_client,
+            logger=logger,
+            bucket=website_bucket,
+        )
+
         # Invalidate CloudFront cache
         if distribution_id:
             _invalidate_cloudfront(
@@ -228,6 +235,56 @@ def _cleanup_staging(s3_client, bucket: str, prefix: str, logger: StructuredLogg
             error_type=type(exc).__name__,
             error_message=str(exc),
         )
+
+
+def _upload_logo_images(
+    s3_client,
+    logger: StructuredLogger,
+    bucket: str,
+) -> None:
+    """Upload logo images from the Lambda code package to the website bucket.
+
+    Images are stored in the 'images/' directory at the project root and are
+    bundled into the Lambda deployment package. They are uploaded to the
+    'assets/' prefix in the website bucket.
+    """
+    images_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "images",
+    )
+    image_files = {
+        "assets/logo-header.png": os.path.join(images_dir, "logo-header.png"),
+        "assets/logo-about.png": os.path.join(images_dir, "logo-about.png"),
+        "assets/favicon.png": os.path.join(images_dir, "favicon.png"),
+    }
+
+    uploaded = 0
+    for s3_key, local_path in image_files.items():
+        if os.path.exists(local_path):
+            try:
+                with open(local_path, "rb") as f:
+                    s3_client.put_object(
+                        Bucket=bucket,
+                        Key=s3_key,
+                        Body=f.read(),
+                        ContentType="image/png",
+                        ServerSideEncryption="AES256",
+                    )
+                uploaded += 1
+            except Exception as exc:
+                logger.warning(
+                    "Failed to upload logo image (non-critical)",
+                    s3_key=s3_key,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                )
+        else:
+            logger.warning(
+                "Logo image not found in Lambda package",
+                local_path=local_path,
+            )
+
+    logger.info("Logo images uploaded", count=uploaded)
 
 
 def _invalidate_cloudfront(

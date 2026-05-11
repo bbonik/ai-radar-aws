@@ -636,15 +636,10 @@ body {
   color: var(--aws-white);
 }
 
-.site-logo .logo-icon {
-  width: 36px;
+.logo-icon-img {
   height: 36px;
-  background: var(--aws-orange);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.2rem;
+  width: auto;
+  border-radius: 4px;
 }
 
 .site-logo h1 {
@@ -1235,15 +1230,36 @@ body {
   color: var(--aws-text);
 }
 
+.about-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.about-logo {
+  height: 80px;
+  width: auto;
+  border-radius: 8px;
+}
+
 .about-modal h2 {
   font-size: 1.4rem;
   font-weight: 700;
   color: var(--aws-dark);
-  margin-bottom: 1rem;
+  margin-bottom: 0;
 }
 
 .about-modal h2 span {
   color: var(--aws-orange);
+}
+
+.about-modal h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--aws-dark);
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .about-modal p {
@@ -1263,6 +1279,18 @@ body {
   line-height: 1.8;
   color: var(--aws-text);
   padding: 0.2rem 0;
+}
+
+.about-modal ul {
+  padding-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.about-modal ul li {
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--aws-text);
+  padding: 0.15rem 0;
 }
 
 .about-modal .highlight-box {
@@ -1896,6 +1924,7 @@ INDEX_TEMPLATE = """\
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Radar AWS - AWS AI/ML News Hub</title>
+  <link rel="icon" type="image/png" href="assets/favicon.png">
   <link rel="stylesheet" href="assets/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 </head>
@@ -1903,7 +1932,7 @@ INDEX_TEMPLATE = """\
   <header class="site-header">
     <div class="header-content">
       <a href="index.html" class="site-logo">
-        <div class="logo-icon">&#x1F4E1;</div>
+        <img src="assets/logo-header.png" alt="AI Radar AWS" class="logo-icon-img">
         <h1>AI Radar <span>AWS</span></h1>
       </a>
       <nav class="header-nav">
@@ -2001,21 +2030,40 @@ INDEX_TEMPLATE = """\
   <div class="about-modal-overlay" id="about-modal-overlay">
     <div class="about-modal">
       <button class="about-modal-close" onclick="closeAboutModal()" aria-label="Close">&times;</button>
-      <h2>About AI Radar <span>AWS</span></h2>
-      <p>AI Radar AWS is an automated curation platform for AWS AI and Machine Learning news. It monitors, filters, researches, and summarizes announcements so you can stay informed without the noise.</p>
-      <p><strong>Methodology:</strong></p>
-      <ol>
-        <li>RSS feed monitoring of the AWS What&#x27;s New feed</li>
-        <li>AI-powered relevance filtering to identify AI/ML announcements</li>
-        <li>Importance classification using a 1-3 star rating system</li>
-        <li>Research phase: follows links to blog posts and documentation for deeper context</li>
-        <li>LLM-powered report generation producing 6 structured sections per announcement</li>
-        <li>Architecture diagram generation for high-importance items</li>
-        <li>Daily automated publishing to this static website</li>
-      </ol>
-      <div class="highlight-box">
-        Each report involves a dedicated research phase where the system reads linked blog posts and AWS documentation pages to provide accurate, in-depth analysis beyond the original announcement text.
+      <div class="about-header">
+        <img src="assets/logo-about.png" alt="AI Radar AWS" class="about-logo">
+        <h2>AI Radar <span>AWS</span></h2>
       </div>
+      <p>An automated intelligence platform that curates, researches, and analyzes AWS AI/ML/GenAI announcements daily. Every report is backed by real research — the system reads linked blog posts and documentation to provide accurate, in-depth analysis.</p>
+
+      <h3>How Each Report Is Generated</h3>
+      <ol>
+        <li><strong>Collection</strong> — Daily monitoring of the AWS "What's New" RSS feed</li>
+        <li><strong>Filtering</strong> — AI-powered relevance detection for AI/ML/GenAI topics</li>
+        <li><strong>Taxonomy Tagging</strong> — LLM-based classification across 5 dimensions (services, type, concepts, use cases, providers)</li>
+        <li><strong>Importance Scoring</strong> — Point-based system with tag bonuses (1-3 stars)</li>
+        <li><strong>Research Phase</strong> — Follows links to blog posts and documentation, extracting technical details and context</li>
+        <li><strong>Report Generation</strong> — Claude Sonnet produces structured 6-section analysis using research context</li>
+        <li><strong>Architecture Diagrams</strong> — Claude Opus generates Mermaid diagrams for high-importance items</li>
+        <li><strong>Publishing</strong> — Static website rebuilt and deployed via CloudFront</li>
+      </ol>
+
+      <h3>Features</h3>
+      <ul>
+        <li>Faceted filtering by service, type, concept, and more</li>
+        <li>Multi-dimensional taxonomy with 80+ tags across 5 dimensions</li>
+        <li>Timeline visualization of announcement volume</li>
+        <li>PDF export for offline reading</li>
+        <li>Mermaid architecture diagrams for key announcements</li>
+        <li>Daily automated updates — no manual curation</li>
+      </ul>
+
+      <div class="highlight-box">
+        <strong>What makes this different:</strong> Each report involves a dedicated research phase where the system reads linked blog posts and AWS documentation pages. This produces analysis that goes beyond the original announcement text — capturing technical details, integration patterns, and practical implications.
+      </div>
+
+      <h3>Technology</h3>
+      <p>Built with Python, AWS Lambda, Amazon Bedrock (Claude Sonnet 4.6, Opus 4.6, Haiku 4.5), S3, CloudFront, WAF, EventBridge, and CDK.</p>
     </div>
   </div>
 
@@ -2035,6 +2083,7 @@ REPORT_TEMPLATE = """\
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{TITLE}} - AI Radar AWS</title>
+  <link rel="icon" type="image/png" href="../assets/favicon.png">
   <link rel="stylesheet" href="../assets/style.css">
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -2043,7 +2092,7 @@ REPORT_TEMPLATE = """\
   <header class="site-header">
     <div class="header-content">
       <a href="../index.html" class="site-logo">
-        <div class="logo-icon">&#x1F4E1;</div>
+        <img src="../assets/logo-header.png" alt="AI Radar AWS" class="logo-icon-img">
         <h1>AI Radar <span>AWS</span></h1>
       </a>
       <nav class="header-nav">
@@ -2114,21 +2163,40 @@ REPORT_TEMPLATE = """\
   <div class="about-modal-overlay" id="about-modal-overlay">
     <div class="about-modal">
       <button class="about-modal-close" onclick="closeAboutModal()" aria-label="Close">&times;</button>
-      <h2>About AI Radar <span>AWS</span></h2>
-      <p>AI Radar AWS is an automated curation platform for AWS AI and Machine Learning news. It monitors, filters, researches, and summarizes announcements so you can stay informed without the noise.</p>
-      <p><strong>Methodology:</strong></p>
-      <ol>
-        <li>RSS feed monitoring of the AWS What&#x27;s New feed</li>
-        <li>AI-powered relevance filtering to identify AI/ML announcements</li>
-        <li>Importance classification using a 1-3 star rating system</li>
-        <li>Research phase: follows links to blog posts and documentation for deeper context</li>
-        <li>LLM-powered report generation producing 6 structured sections per announcement</li>
-        <li>Architecture diagram generation for high-importance items</li>
-        <li>Daily automated publishing to this static website</li>
-      </ol>
-      <div class="highlight-box">
-        Each report involves a dedicated research phase where the system reads linked blog posts and AWS documentation pages to provide accurate, in-depth analysis beyond the original announcement text.
+      <div class="about-header">
+        <img src="../assets/logo-about.png" alt="AI Radar AWS" class="about-logo">
+        <h2>AI Radar <span>AWS</span></h2>
       </div>
+      <p>An automated intelligence platform that curates, researches, and analyzes AWS AI/ML/GenAI announcements daily. Every report is backed by real research — the system reads linked blog posts and documentation to provide accurate, in-depth analysis.</p>
+
+      <h3>How Each Report Is Generated</h3>
+      <ol>
+        <li><strong>Collection</strong> — Daily monitoring of the AWS "What's New" RSS feed</li>
+        <li><strong>Filtering</strong> — AI-powered relevance detection for AI/ML/GenAI topics</li>
+        <li><strong>Taxonomy Tagging</strong> — LLM-based classification across 5 dimensions (services, type, concepts, use cases, providers)</li>
+        <li><strong>Importance Scoring</strong> — Point-based system with tag bonuses (1-3 stars)</li>
+        <li><strong>Research Phase</strong> — Follows links to blog posts and documentation, extracting technical details and context</li>
+        <li><strong>Report Generation</strong> — Claude Sonnet produces structured 6-section analysis using research context</li>
+        <li><strong>Architecture Diagrams</strong> — Claude Opus generates Mermaid diagrams for high-importance items</li>
+        <li><strong>Publishing</strong> — Static website rebuilt and deployed via CloudFront</li>
+      </ol>
+
+      <h3>Features</h3>
+      <ul>
+        <li>Faceted filtering by service, type, concept, and more</li>
+        <li>Multi-dimensional taxonomy with 80+ tags across 5 dimensions</li>
+        <li>Timeline visualization of announcement volume</li>
+        <li>PDF export for offline reading</li>
+        <li>Mermaid architecture diagrams for key announcements</li>
+        <li>Daily automated updates — no manual curation</li>
+      </ul>
+
+      <div class="highlight-box">
+        <strong>What makes this different:</strong> Each report involves a dedicated research phase where the system reads linked blog posts and AWS documentation pages. This produces analysis that goes beyond the original announcement text — capturing technical details, integration patterns, and practical implications.
+      </div>
+
+      <h3>Technology</h3>
+      <p>Built with Python, AWS Lambda, Amazon Bedrock (Claude Sonnet 4.6, Opus 4.6, Haiku 4.5), S3, CloudFront, WAF, EventBridge, and CDK.</p>
     </div>
   </div>
 
