@@ -1600,6 +1600,8 @@ JS_TEMPLATE = """\
       dateThreshold = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     } else if (filters.timePeriod === 'month') {
       dateThreshold = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    } else if (filters.timePeriod === '3months') {
+      dateThreshold = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
     }
 
     var cardArray = Array.prototype.slice.call(cards);
@@ -1834,6 +1836,7 @@ INDEX_TEMPLATE = """\
           <button class="filter-chip active" data-time="all">All</button>
           <button class="filter-chip" data-time="week">Last Week</button>
           <button class="filter-chip" data-time="month">Last Month</button>
+          <button class="filter-chip" data-time="3months">Last 3 Months</button>
         </div>
       </div>
 
