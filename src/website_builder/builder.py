@@ -1488,6 +1488,7 @@ JS_TEMPLATE = """\
         chip.classList.add('active');
         filters.timePeriod = chip.getAttribute('data-time');
         applyFilters();
+        updateTimeline();
       });
     }
 
@@ -1565,6 +1566,7 @@ JS_TEMPLATE = """\
 
     renderActiveFilters();
     applyFilters();
+    updateTimeline();
   }
 
   function renderActiveFilters() {
@@ -1722,44 +1724,88 @@ JS_TEMPLATE = """\
   }
 
   // Timeline Chart (Chart.js)
+  var timelineChart = null;
+
   function initTimeline() {
     var ctx = document.getElementById('timeline-chart');
     if (!ctx || !window.Chart || !timelineData.labels) return;
-
     ctx._chartInitialized = true;
+    updateTimeline();
+  }
 
-    new Chart(ctx, {
+  function updateTimeline() {
+    var ctx = document.getElementById('timeline-chart');
+    if (!ctx || !window.Chart || !timelineData.labels) return;
+
+    // Filter timeline data based on current time period
+    var now = new Date();
+    var cutoffDate = null;
+    if (filters.timePeriod === 'week') {
+      cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    } else if (filters.timePeriod === 'month') {
+      cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    } else if (filters.timePeriod === '3months') {
+      cutoffDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    }
+
+    var filteredLabels = [];
+    var filteredStar1 = [];
+    var filteredStar2 = [];
+    var filteredStar3 = [];
+    var filteredStar4 = [];
+    var filteredStar5 = [];
+
+    for (var i = 0; i < timelineData.labels.length; i++) {
+      var dateStr = timelineData.labels[i];
+      if (cutoffDate) {
+        var d = new Date(dateStr + 'T00:00:00Z');
+        if (d < cutoffDate) continue;
+      }
+      filteredLabels.push(dateStr);
+      filteredStar1.push(timelineData.star1[i]);
+      filteredStar2.push(timelineData.star2[i]);
+      filteredStar3.push(timelineData.star3[i]);
+      filteredStar4.push(timelineData.star4[i]);
+      filteredStar5.push(timelineData.star5[i]);
+    }
+
+    // Destroy existing chart if any
+    if (timelineChart) {
+      timelineChart.destroy();
+    }
+
+    timelineChart = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: timelineData.labels,
+        labels: filteredLabels,
         datasets: [
           {
             label: '5-Star (Critical)',
-            data: timelineData.star5,
+            data: filteredStar5,
             backgroundColor: '#f924e1',
             borderRadius: 2
           },
           {
             label: '4-Star (Important)',
-            data: timelineData.star4,
+            data: filteredStar4,
             backgroundColor: '#f9a825',
             borderRadius: 2
           },
           {
             label: '3-Star (Notable)',
-            data: timelineData.star3,
+            data: filteredStar3,
             backgroundColor: '#24F93D',
             borderRadius: 2
           },
           {
             label: '2-Star (Standard)',
-            data: timelineData.star2,
+            data: filteredStar2,
             backgroundColor: '#2476F9',
             borderRadius: 2
           },
           {
             label: '1-Star (Peripheral)',
-            data: timelineData.star1,
+            data: filteredStar1,
             backgroundColor: '#9e9e9e',
             borderRadius: 2
           }
