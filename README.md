@@ -154,6 +154,29 @@ All tunable parameters live in `src/config.py`:
 
 No secrets in the repository — all credentials come from IAM roles at runtime.
 
+## Estimated Monthly Cost
+
+Assumptions: ~7 new AI/ML announcements per week (~30/month), low website traffic (<10K page views/month).
+
+| Service | Usage | Monthly Cost |
+|---------|-------|-------------|
+| **Bedrock — Sonnet 4.6** (reports) | 30 calls × ~2K input + 4K output tokens | ~$1.50 |
+| **Bedrock — Opus 4.6** (diagrams) | 20 calls × ~2K input + 2K output tokens | ~$3.00 |
+| **Bedrock — Haiku 4.5** (tagging) | 30 calls × ~1K input + 0.5K output tokens | ~$0.05 |
+| **Lambda** (3 functions) | ~35 invocations/day, <5 min total | ~$0.01 |
+| **S3** (3 buckets) | <50 MB storage, <1K requests/day | ~$0.01 |
+| **CloudFront** | <10K requests, <1 GB transfer | ~$0.10 |
+| **WAF** | 1 Web ACL + 2 rules | ~$6.00 |
+| **API Gateway** (analytics) | <10K requests | ~$0.01 |
+| **EventBridge** | 1 rule, 30 invocations | ~$0.00 |
+| **CloudWatch** (logs + alarms) | 5 alarms, minimal logs | ~$0.50 |
+| | | |
+| **Total** | | **~$11/month** |
+
+The dominant cost is **WAF** ($5/month for the Web ACL + $1/month per rule). Without WAF, the total drops to ~$5/month. Bedrock costs scale linearly with announcement volume.
+
+> **Note**: Bedrock pricing varies by model and region. The estimates above use approximate on-demand pricing for the global inference profiles. Actual costs may differ based on token counts and regional pricing.
+
 ## Development
 
 ```bash
