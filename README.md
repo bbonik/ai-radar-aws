@@ -36,7 +36,7 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the AWS "What's New" R
 │   │   ├── orchestrator.py         # Pipeline coordination
 │   │   ├── rss_fetcher.py          # RSS feed retrieval
 │   │   ├── relevance_filter.py     # AI/ML keyword filtering
-│   │   ├── importance_classifier.py # Point-based 1-3 star scoring
+│   │   ├── importance_classifier.py # Point-based 1-5 star scoring
 │   │   ├── tagger.py              # LLM-based taxonomy tagging (Haiku 4.5)
 │   │   ├── research_agent.py      # Blogpost/doc link content extraction
 │   │   ├── report_generator.py    # Structured report generation (Sonnet)
@@ -56,7 +56,9 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the AWS "What's New" R
 ├── scripts/                         # Utility scripts
 │   ├── analytics_report.py        # Generate analytics CSV report via Athena
 │   ├── retag_announcements.py     # Retroactively tag existing announcements
+│   ├── reclassify_announcements.py # Recompute importance scores
 │   ├── generate_card_summaries.py # Backfill card summaries for existing data
+│   ├── generate_missing_graphs.py # Backfill visual summaries for 2+ star items
 │   └── test_local.py             # Local pipeline testing with mocked AWS
 ├── tests/                           # Tests (pytest + hypothesis)
 ├── docs/                            # Design documents and analysis
@@ -101,8 +103,11 @@ That's it. Two commands from zero to a running website.
 | `./rebuild-site.sh` | Deploy code + rebuild website | After code changes |
 | `./rebuild-site.sh --skip-cdk` | Just rebuild website (no CDK) | After data-only changes |
 | `./rebuild-site.sh --pipeline` | Run full pipeline + rebuild | Fetch new news manually |
-| `python scripts/retag_announcements.py` | Tag existing announcements | After adding tagging feature |
+| `python scripts/retag_announcements.py` | Tag existing announcements | After taxonomy changes |
+| `python scripts/retag_announcements.py --force` | Re-tag ALL announcements | When taxonomy tags are updated |
+| `python scripts/reclassify_announcements.py` | Recompute importance scores | After scoring changes |
 | `python scripts/generate_card_summaries.py` | Generate card summaries | After adding summary feature |
+| `python scripts/generate_missing_graphs.py` | Backfill visual summaries | After lowering graph threshold |
 | `python scripts/analytics_report.py --days 30` | Generate analytics CSV | Check website usage metrics |
 
 ## How It Works
@@ -112,10 +117,10 @@ That's it. Two commands from zero to a running website.
 3. **Deduplication** skips previously processed announcements (by link)
 4. **Relevance Filter** applies regex patterns for AI/ML/GenAI keywords
 5. **Taxonomy Tagger** (Haiku 4.5) assigns multi-dimensional tags across 5 dimensions
-6. **Importance Classifier** computes a point score → 1/2/3 stars (uses tags for bonus scoring)
+6. **Importance Classifier** computes a point score → 1-5 stars (uses tags for bonus scoring)
 7. **Research Agent** follows blogpost/doc links for additional context
 8. **Report Generator** (Sonnet 4.6) produces structured 6-section reports + card summary
-9. **Graph Generator** (Opus 4.6) creates Mermaid architecture diagrams (2-3 star only)
+9. **Graph Generator** (Opus 4.6) creates Mermaid visual summaries (2-5 star only)
 10. **Storage Manager** appends results to CSV in S3
 11. **Lambda 2** rebuilds the static website from CSV data
 12. **CloudFront** serves the site with WAF protection and access logging
@@ -126,7 +131,7 @@ That's it. Two commands from zero to a running website.
 - **Time filtering** — All / Last Week / Last Month / Last 3 Months
 - **Sort** — Newest first or Most important first
 - **Taxonomy tags** — 5 dimensions: Services, Type, Concepts, Use Cases, Providers
-- **Report pages** — 6 structured sections with bullet points + Mermaid diagrams
+- **Report pages** — 6 structured sections with bullet points + Mermaid visual summaries
 - **PDF export** — Client-side PDF generation via html2pdf.js
 - **Timeline chart** — Stacked bar chart showing announcement volume over time
 - **About modal** — Project methodology explanation
