@@ -99,12 +99,12 @@ def test_property9_importance_level_1_returns_none_without_llm_call(
 
     generator = GraphGenerator(config=config, logger=logger)
 
-    # Test both importance_level 1 and 2
-    for level in (1, 2):
+    # Test importance_level 1 only (skip)
+    for level in (1,):
         mock_bedrock.reset_mock()
         result = generator.generate(item=item, report=report, importance_level=level)
 
-        # Must return None for low-importance announcements
+        # Must return None for 1-star announcements
         assert result is None, (
             f"Graph Generator should return None for importance_level={level}, "
             f"but got: {result!r}"

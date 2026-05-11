@@ -492,7 +492,7 @@ class WebsiteBuilder:
             mermaid_code_safe = _sanitize_html(a.mermaid_graph)
             mermaid_section = (
                 '<section class="report-section mermaid-section">\n'
-                '  <h2>Architecture Diagram</h2>\n'
+                '  <h2>Visual Summary</h2>\n'
                 f'  <div class="mermaid">{mermaid_code_safe}</div>\n'
                 '</section>'
             )
@@ -588,10 +588,10 @@ CSS_TEMPLATE = """\
   --aws-success: #1d8102;
   --aws-warning: #ff9900;
   --aws-error: #d13212;
-  --star-1: #8c9196;
-  --star-2: #2196a8;
-  --star-3: #e6a817;
-  --star-4: #e65100;
+  --star-1: #9e9e9e;
+  --star-2: #1976d2;
+  --star-3: #2e7d32;
+  --star-4: #f9a825;
   --star-5: #c62828;
   --radius: 8px;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -1742,25 +1742,25 @@ JS_TEMPLATE = """\
           {
             label: '4-Star (Important)',
             data: timelineData.star4,
-            backgroundColor: '#e65100',
+            backgroundColor: '#f9a825',
             borderRadius: 2
           },
           {
             label: '3-Star (Notable)',
             data: timelineData.star3,
-            backgroundColor: '#e6a817',
+            backgroundColor: '#2e7d32',
             borderRadius: 2
           },
           {
             label: '2-Star (Standard)',
             data: timelineData.star2,
-            backgroundColor: '#2196a8',
+            backgroundColor: '#1976d2',
             borderRadius: 2
           },
           {
             label: '1-Star (Peripheral)',
             data: timelineData.star1,
-            backgroundColor: '#8c9196',
+            backgroundColor: '#9e9e9e',
             borderRadius: 2
           }
         ]
@@ -2070,7 +2070,7 @@ INDEX_TEMPLATE = """\
         <li><strong>Importance Scoring</strong> — Point-based system with tag bonuses (1-5 stars)</li>
         <li><strong>Research Phase</strong> — Follows links to blog posts and documentation, extracting technical details and context</li>
         <li><strong>Report Generation</strong> — Claude Sonnet produces structured 6-section analysis using research context</li>
-        <li><strong>Architecture Diagrams</strong> — Claude Opus generates Mermaid diagrams for high-importance items</li>
+        <li><strong>Visual Summarys</strong> — Claude Opus generates Mermaid diagrams for high-importance items</li>
         <li><strong>Publishing</strong> — Static website rebuilt and deployed via CloudFront</li>
       </ol>
 
@@ -2080,7 +2080,7 @@ INDEX_TEMPLATE = """\
         <li>Multi-dimensional taxonomy with 80+ tags across 5 dimensions</li>
         <li>Timeline visualization of announcement volume</li>
         <li>PDF export for offline reading</li>
-        <li>Mermaid architecture diagrams for key announcements</li>
+        <li>Mermaid visual summaries for key announcements</li>
         <li>Daily automated updates — no manual curation</li>
       </ul>
 
@@ -2203,7 +2203,7 @@ REPORT_TEMPLATE = """\
         <li><strong>Importance Scoring</strong> — Point-based system with tag bonuses (1-5 stars)</li>
         <li><strong>Research Phase</strong> — Follows links to blog posts and documentation, extracting technical details and context</li>
         <li><strong>Report Generation</strong> — Claude Sonnet produces structured 6-section analysis using research context</li>
-        <li><strong>Architecture Diagrams</strong> — Claude Opus generates Mermaid diagrams for high-importance items</li>
+        <li><strong>Visual Summarys</strong> — Claude Opus generates Mermaid diagrams for high-importance items</li>
         <li><strong>Publishing</strong> — Static website rebuilt and deployed via CloudFront</li>
       </ol>
 
@@ -2213,7 +2213,7 @@ REPORT_TEMPLATE = """\
         <li>Multi-dimensional taxonomy with 80+ tags across 5 dimensions</li>
         <li>Timeline visualization of announcement volume</li>
         <li>PDF export for offline reading</li>
-        <li>Mermaid architecture diagrams for key announcements</li>
+        <li>Mermaid visual summaries for key announcements</li>
         <li>Daily automated updates — no manual curation</li>
       </ul>
 

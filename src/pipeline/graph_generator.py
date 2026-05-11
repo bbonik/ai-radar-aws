@@ -34,7 +34,7 @@ class GraphGenerator:
     inference profile ARN for LLM B (Claude Opus) with global cross-region
     inference profile as the model source.
 
-    Skips generation for importance_level < 3 (returns None without LLM call).
+    Skips generation for importance_level < 2 (returns None without LLM call).
     Retries up to 2× on failure with 1s delay. Returns None on persistent failure.
     """
 
@@ -62,8 +62,8 @@ class GraphGenerator:
         Returns:
             A Mermaid diagram string, or None if skipped or generation failed.
         """
-        # Skip graph generation for 1-star and 2-star announcements
-        if importance_level < 3:
+        # Skip graph generation for 1-star announcements only
+        if importance_level < 2:
             self._logger.info(
                 "Skipping graph generation for low-importance announcement",
                 announcement_link=item.link,
