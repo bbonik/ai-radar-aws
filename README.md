@@ -7,7 +7,7 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the AWS "What's New" R
 ```
 ┌──────────────┐     ┌─────────────────────────────────────────────────────┐
 │  EventBridge │────▶│  Lambda 1: Report Generation Pipeline (15 min)      │
-│  (Daily)     │     │  RSS → Dedup → Filter → Classify → Tag (Haiku) →   │
+│  (Daily)     │     │  RSS → Dedup → Filter → Tag (Haiku) → Classify →   │
 └──────────────┘     │  Research → Report (Sonnet) → Graph (Opus) →        │
                      │  Store CSV to S3                                     │
                      └──────────────────────────┬──────────────────────────┘
@@ -111,8 +111,8 @@ That's it. Two commands from zero to a running website.
 2. **RSS Fetcher** retrieves the AWS "What's New" feed (100 items)
 3. **Deduplication** skips previously processed announcements (by link)
 4. **Relevance Filter** applies regex patterns for AI/ML/GenAI keywords
-5. **Importance Classifier** computes a point score → 1/2/3 stars
-6. **Taxonomy Tagger** (Haiku 4.5) assigns multi-dimensional tags across 5 dimensions
+5. **Taxonomy Tagger** (Haiku 4.5) assigns multi-dimensional tags across 5 dimensions
+6. **Importance Classifier** computes a point score → 1/2/3 stars (uses tags for bonus scoring)
 7. **Research Agent** follows blogpost/doc links for additional context
 8. **Report Generator** (Sonnet 4.6) produces structured 6-section reports + card summary
 9. **Graph Generator** (Opus 4.6) creates Mermaid architecture diagrams (2-3 star only)

@@ -1,7 +1,8 @@
 """Importance Classifier for AWS AI announcements.
 
 Computes a point-based importance score for each announcement by
-combining service tier points, blogpost link presence, and word count.
+combining service tier points, blogpost link presence, word count,
+and tag-based bonuses (when taxonomy tags are available).
 Maps the raw score to a star level (1, 2, or 3) using configurable
 thresholds.
 """
@@ -10,7 +11,7 @@ import re
 
 from src.config import Config
 from src.shared.logger import StructuredLogger
-from src.shared.models import RSSItem
+from src.shared.models import AnnouncementTags, RSSItem
 
 
 class ImportanceClassifier:
@@ -51,16 +52,17 @@ class ImportanceClassifier:
         # Compile URL pattern for blogpost detection
         self._url_pattern = re.compile(r"https?://\S+")
 
-    def classify(self, item: RSSItem) -> tuple[int, float]:
+    def classify(self, item: RSSItem, tags: AnnouncementTags | None = None) -> tuple[int, float]:
         """Classify an RSS item by importance.
 
         Args:
             item: The RSS item to classify.
+            tags: Optional taxonomy tags (used for tag-based score bonuses).
 
         Returns:
             A tuple of (star_level, raw_score) where star_level is 1, 2, or 3.
         """
-        score = self.compute_score(item)
+        score = self.compute_score(item, tags)
         star_level = self._score_to_stars(score)
 
         self.logger.info(
@@ -73,13 +75,14 @@ class ImportanceClassifier:
 
         return (star_level, score)
 
-    def compute_score(self, item: RSSItem) -> float:
+    def compute_score(self, item: RSSItem, tags: AnnouncementTags | None = None) -> float:
         """Compute the raw importance score for an item.
 
-        Score = service_tier_points + (blogpost_points if has_links else 0) + (word_count × word_count_scale)
+        Score = service_tier_points + blogpost_points + word_count_contribution + tag_bonus
 
         Args:
             item: The RSS item to score.
+            tags: Optional taxonomy tags for tag-based bonuses.
 
         Returns:
             The computed importance score as a float.
@@ -93,7 +96,35 @@ class ImportanceClassifier:
         word_count = len(item.description.split())
         word_count_contribution = word_count * self.config.word_count_scale
 
-        return service_points + blogpost_points + word_count_contribution
+        tag_bonus = self._compute_tag_bonus(tags)
+
+        return service_points + blogpost_points + word_count_contribution + tag_bonus
+
+    def _compute_tag_bonus(self, tags: AnnouncementTags | None) -> float:
+        """Compute bonus points based on taxonomy tags.
+
+        Applies configurable bonuses for specific announcement types.
+        Only the highest applicable bonus is used (not cumulative).
+
+        Args:
+            tags: The taxonomy tags, or None if not available.
+
+        Returns:
+            The tag bonus points (0 if no tags or no matching bonuses).
+        """
+        if not tags or not tags.types:
+            return 0.0
+
+        # Apply the highest matching bonus (not cumulative)
+        bonus = 0.0
+        if "new-model" in tags.types:
+            bonus = max(bonus, self.config.tag_bonus_new_model)
+        if "new-service" in tags.types:
+            bonus = max(bonus, self.config.tag_bonus_new_service)
+        if "ga-launch" in tags.types:
+            bonus = max(bonus, self.config.tag_bonus_ga_launch)
+
+        return bonus
 
     def _extract_service(self, item: RSSItem) -> str:
         """Extract the AWS service name from the item title or description.

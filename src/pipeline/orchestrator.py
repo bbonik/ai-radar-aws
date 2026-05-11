@@ -163,11 +163,11 @@ class PipelineOrchestrator:
         research_skipped = False
 
         try:
-            # Stage 4: Classify importance
-            star_level, score = self._importance_classifier.classify(item)
-
-            # Stage 5: Tag (non-fatal — empty tags on failure)
+            # Stage 4: Tag (non-fatal — empty tags on failure)
             tags = self._tagger.tag(item)
+
+            # Stage 5: Classify importance (uses tags for bonus scoring)
+            star_level, score = self._importance_classifier.classify(item, tags)
 
             # Stage 6: Research
             research_context = self._research_agent.research(item)
