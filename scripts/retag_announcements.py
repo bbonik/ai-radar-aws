@@ -57,6 +57,11 @@ def get_data_bucket() -> str:
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Retroactively tag announcements")
+    parser.add_argument("--force", action="store_true", help="Re-tag all announcements (even already tagged ones)")
+    args = parser.parse_args()
+
     config = Config()
     logger = StructuredLogger(lambda_name="retag-script", run_id="retag-manual")
     tagger = Tagger(config, logger)
@@ -80,18 +85,19 @@ def main():
     skipped_count = 0
 
     for i, row in enumerate(rows):
-        # Check if already tagged
-        existing_tags = row.get("tags", "")
-        if existing_tags and existing_tags != "" and existing_tags != "{}":
-            import json
-            try:
-                parsed = json.loads(existing_tags)
-                if any(parsed.get(k) for k in ["services", "types", "concepts", "use_cases", "providers"]):
-                    skipped_count += 1
-                    print(f"  [{i+1}/{len(rows)}] Already tagged: {row['title'][:60]}...")
-                    continue
-            except (json.JSONDecodeError, TypeError):
-                pass
+        # Check if already tagged (skip unless --force)
+        if not args.force:
+            existing_tags = row.get("tags", "")
+            if existing_tags and existing_tags != "" and existing_tags != "{}":
+                import json
+                try:
+                    parsed = json.loads(existing_tags)
+                    if any(parsed.get(k) for k in ["services", "types", "concepts", "use_cases", "providers"]):
+                        skipped_count += 1
+                        print(f"  [{i+1}/{len(rows)}] Already tagged: {row['title'][:60]}...")
+                        continue
+                except (json.JSONDecodeError, TypeError):
+                    pass
 
         # Create an RSSItem for the tagger
         item = RSSItem(
