@@ -42,22 +42,19 @@ def get_stack_outputs():
 
 
 def get_bucket_names(outputs):
-    """Extract bucket names from stack outputs or describe stack resources."""
+    """Extract logs bucket name from stack outputs or describe stack resources."""
     # Try to get from outputs first
     logs_bucket = outputs.get("LogsBucketName", "")
-    data_bucket = ""
 
     # If not in outputs, look up via stack resources
-    if not logs_bucket or not data_bucket:
+    if not logs_bucket:
         cfn = boto3.client("cloudformation")
         resources = cfn.list_stack_resources(StackName=STACK_NAME)
         for r in resources.get("StackResourceSummaries", []):
             if r["LogicalResourceId"] == "LogsBucket":
                 logs_bucket = r["PhysicalResourceId"]
-            elif r["LogicalResourceId"] == "DataBucket":
-                data_bucket = r["PhysicalResourceId"]
 
-    return data_bucket, logs_bucket
+    return logs_bucket
 
 
 def run_athena_query(athena, query, output_location, database=None):
@@ -101,7 +98,7 @@ def get_query_results(athena, execution_id):
     return rows
 
 
-def setup_database(athena, output_location, data_bucket, logs_bucket):
+def setup_database(athena, output_location, logs_bucket):
     """Create Athena database and tables if they don't exist."""
     print("Setting up Athena database and tables...")
 
@@ -343,13 +340,12 @@ def main():
     # Get stack outputs
     print("\nRetrieving stack configuration...")
     outputs = get_stack_outputs()
-    data_bucket, logs_bucket = get_bucket_names(outputs)
+    logs_bucket = get_bucket_names(outputs)
 
-    if not data_bucket or not logs_bucket:
-        print("Error: Could not determine bucket names from stack.")
+    if not logs_bucket:
+        print("Error: Could not determine logs bucket name from stack.")
         sys.exit(1)
 
-    print(f"  Data bucket: {data_bucket}")
     print(f"  Logs bucket: {logs_bucket}")
 
     # Athena output location
@@ -357,7 +353,7 @@ def main():
 
     # Setup
     athena = boto3.client("athena")
-    setup_database(athena, output_location, data_bucket, logs_bucket)
+    setup_database(athena, output_location, logs_bucket)
 
     # Run queries
     print(f"\nRunning analytics queries (last {args.days} days)...")
