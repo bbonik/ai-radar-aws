@@ -21,6 +21,7 @@ from aws_cdk import (
     Duration,
     RemovalPolicy,
     Stack,
+    aws_apigatewayv2 as apigwv2,
     aws_cloudfront as cloudfront,
     aws_cloudfront_origins as origins,
     aws_cloudwatch as cloudwatch,
@@ -65,6 +66,18 @@ class AiRadarAwsStack(Stack):
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
+        )
+
+        # ─── S3 Logs Bucket (CloudFront Access Logs) ──────────────────────
+        # CloudFront standard logging requires ACL-enabled bucket
+        self.logs_bucket = s3.Bucket(
+            self,
+            "LogsBucket",
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True,
+            object_ownership=s3.ObjectOwnership.OBJECT_WRITER,
         )
 
         # ─── Bedrock Application Inference Profiles ───────────────────────
@@ -220,7 +233,7 @@ class AiRadarAwsStack(Stack):
                         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
                         "style-src 'self' 'unsafe-inline'; "
                         "img-src 'self' data:; "
-                        "connect-src 'self' https://cdnjs.cloudflare.com"
+                        "connect-src 'self' https://cdnjs.cloudflare.com https://*.execute-api.us-east-1.amazonaws.com"
                     ),
                     override=True,
                 ),
@@ -253,6 +266,9 @@ class AiRadarAwsStack(Stack):
             default_root_object="index.html",
             minimum_protocol_version=cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
             web_acl_id=self.waf_web_acl.attr_arn,
+            enable_logging=True,
+            log_bucket=self.logs_bucket,
+            log_file_prefix="cloudfront/",
         )
 
         # Set the CloudFront distribution ID on the website builder lambda
@@ -428,6 +444,96 @@ class AiRadarAwsStack(Stack):
             alarm_description="Lambda 2 approaching 10-min limit",
         )
 
+        # ─── Analytics Lambda (Event Collector) ────────────────────────────
+        self.analytics_lambda = lambda_.Function(
+            self,
+            "AnalyticsLambda",
+            function_name="ai-radar-analytics",
+            runtime=lambda_.Runtime.PYTHON_3_11,
+            handler="src.analytics.handler.handler",
+            code=lambda_.Code.from_asset(
+                ".",
+                exclude=[
+                    ".git/*",
+                    ".hypothesis/*",
+                    ".kiro/*",
+                    ".pytest_cache/*",
+                    "tests/*",
+                    "infrastructure/*",
+                    "cdk.out/*",
+                    "node_modules/*",
+                    "__pycache__/*",
+                    "*.pyc",
+                    ".venv/*",
+                ],
+            ),
+            timeout=Duration.seconds(10),
+            memory_size=128,
+            environment={
+                "DATA_BUCKET_NAME": self.data_bucket.bucket_name,
+            },
+        )
+
+        # Analytics Lambda: write to data bucket (analytics/ prefix)
+        self.data_bucket.grant_write(self.analytics_lambda)
+
+        # ─── HTTP API Gateway (Analytics Events) ──────────────────────────
+        self.analytics_api = apigwv2.CfnApi(
+            self,
+            "AnalyticsApi",
+            name="ai-radar-analytics-api",
+            protocol_type="HTTP",
+            cors_configuration=apigwv2.CfnApi.CorsProperty(
+                allow_origins=["*"],
+                allow_methods=["POST", "OPTIONS"],
+                allow_headers=["Content-Type"],
+            ),
+        )
+
+        # Auto-deploy stage
+        self.analytics_stage = apigwv2.CfnStage(
+            self,
+            "AnalyticsApiStage",
+            api_id=self.analytics_api.ref,
+            stage_name="$default",
+            auto_deploy=True,
+        )
+
+        # Lambda integration
+        self.analytics_integration = apigwv2.CfnIntegration(
+            self,
+            "AnalyticsIntegration",
+            api_id=self.analytics_api.ref,
+            integration_type="AWS_PROXY",
+            integration_uri=self.analytics_lambda.function_arn,
+            payload_format_version="2.0",
+        )
+
+        # POST /events route
+        self.analytics_route = apigwv2.CfnRoute(
+            self,
+            "AnalyticsRoute",
+            api_id=self.analytics_api.ref,
+            route_key="POST /events",
+            target=f"integrations/{self.analytics_integration.ref}",
+        )
+
+        # Grant API Gateway permission to invoke the analytics Lambda
+        self.analytics_lambda.add_permission(
+            "ApiGatewayInvoke",
+            principal=iam.ServicePrincipal("apigateway.amazonaws.com"),
+            source_arn=f"arn:aws:execute-api:{Aws.REGION}:{Aws.ACCOUNT_ID}:{self.analytics_api.ref}/*/*",
+        )
+
+        # Construct the API URL
+        analytics_api_url = f"https://{self.analytics_api.ref}.execute-api.{Aws.REGION}.amazonaws.com"
+
+        # Set analytics API URL on website builder Lambda
+        self.website_builder_lambda.add_environment(
+            "ANALYTICS_API_URL",
+            analytics_api_url,
+        )
+
         # ─── Stack Outputs ────────────────────────────────────────────────
         CfnOutput(
             self,
@@ -440,4 +546,16 @@ class AiRadarAwsStack(Stack):
             "CloudFrontDistributionId",
             value=self.distribution.distribution_id,
             description="CloudFront distribution ID",
+        )
+        CfnOutput(
+            self,
+            "AnalyticsApiUrl",
+            value=analytics_api_url,
+            description="Analytics event collection API URL",
+        )
+        CfnOutput(
+            self,
+            "LogsBucketName",
+            value=self.logs_bucket.bucket_name,
+            description="CloudFront access logs bucket name",
         )

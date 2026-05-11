@@ -17,6 +17,7 @@ import csv
 import html
 import io
 import json
+import os
 import re
 from collections import defaultdict
 
@@ -371,6 +372,9 @@ class WebsiteBuilder:
             "/*__TAGS_BY_DIMENSION__*/",
             json.dumps(tags_by_dimension_serializable, ensure_ascii=False),
         )
+        # Inject analytics API URL from environment
+        analytics_url = os.environ.get("ANALYTICS_API_URL", "")
+        js = js.replace("/*__ANALYTICS_URL__*/", analytics_url)
         return js
 
     def _compute_timeline_data(self, announcements: list[ProcessedAnnouncement]) -> dict:
@@ -1782,6 +1786,101 @@ JS_TEMPLATE = """\
       window.closeAboutModal();
     }
   });
+
+  // ─── Analytics Tracking ──────────────────────────────────────────────
+  (function() {
+    var ANALYTICS_URL = '/*__ANALYTICS_URL__*/';
+    if (!ANALYTICS_URL || ANALYTICS_URL.indexOf('__') !== -1) return;
+
+    var sessionId = sessionStorage.getItem('_ar_sid');
+    if (!sessionId) {
+      sessionId = 'sid_' + Math.random().toString(36).substr(2, 12);
+      sessionStorage.setItem('_ar_sid', sessionId);
+    }
+
+    var eventQueue = [];
+
+    function track(eventType, data) {
+      var evt = {
+        event_type: eventType,
+        path: window.location.pathname,
+        session_id: sessionId,
+        timestamp: new Date().toISOString()
+      };
+      if (data) {
+        for (var k in data) { evt[k] = data[k]; }
+      }
+      eventQueue.push(evt);
+    }
+
+    function flush() {
+      if (eventQueue.length === 0) return;
+      var batch = eventQueue.splice(0, eventQueue.length);
+      var payload = JSON.stringify({ events: batch });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(ANALYTICS_URL + '/events', payload);
+      } else {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', ANALYTICS_URL + '/events', true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.send(payload);
+      }
+    }
+
+    // Track pageview
+    track('pageview');
+
+    // Flush every 10 seconds
+    setInterval(flush, 10000);
+
+    // Flush on page unload
+    window.addEventListener('beforeunload', flush);
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'hidden') flush();
+    });
+
+    // Track report clicks (from index cards)
+    var grid = document.getElementById('announcements-grid');
+    if (grid) {
+      grid.addEventListener('click', function(e) {
+        var link = e.target.closest('.card-link, .card-title a');
+        if (link) {
+          var href = link.getAttribute('href') || '';
+          var slug = href.replace('reports/', '').replace('.html', '');
+          track('report_click', { report_slug: slug });
+        }
+      });
+    }
+
+    // Track filter usage (tag clicks in filter bar)
+    var filtersSection = document.getElementById('filters');
+    if (filtersSection) {
+      filtersSection.addEventListener('click', function(e) {
+        var chip = e.target.closest('.filter-chip[data-dimension]');
+        if (chip) {
+          track('filter_tag', {
+            dimension: chip.getAttribute('data-dimension'),
+            tag: chip.getAttribute('data-tag')
+          });
+        }
+      });
+    }
+
+    // Track PDF export
+    var origExportPDF = window.exportPDF;
+    window.exportPDF = function() {
+      track('pdf_export', { report_slug: window.location.pathname.replace('/reports/', '').replace('.html', '') });
+      flush();
+      if (origExportPDF) origExportPDF();
+    };
+
+    // Track About modal
+    var origOpenAbout = window.openAboutModal;
+    window.openAboutModal = function() {
+      track('about_open');
+      if (origOpenAbout) origOpenAbout();
+    };
+  })();
 
 })();
 """
