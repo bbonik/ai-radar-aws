@@ -94,6 +94,7 @@ class Report:
     how_different: str
     when_to_prefer: str
     availability: str
+    card_summary: str = ""  # One-sentence summary for announcement cards
 
 
 @dataclass
@@ -132,6 +133,7 @@ class ProcessedAnnouncement:
             "mermaid_graph": self.mermaid_graph if self.mermaid_graph is not None else "",
             "blogpost_links": "|".join(self.blogpost_links),
             "first_detected": self.first_detected,
+            "card_summary": self.report.card_summary,
             "tags": self.tags.serialize(),
         }
 
@@ -145,6 +147,7 @@ class ProcessedAnnouncement:
             how_different=row["how_different"],
             when_to_prefer=row["when_to_prefer"],
             availability=row["availability"],
+            card_summary=row.get("card_summary", ""),  # backward compat
         )
 
         mermaid_graph = row["mermaid_graph"] if row["mermaid_graph"] != "" else None

@@ -31,6 +31,7 @@ ANNOUNCEMENT_CSV_COLUMNS = [
     "mermaid_graph",
     "blogpost_links",
     "first_detected",
+    "card_summary",
     "tags",
 ]
 

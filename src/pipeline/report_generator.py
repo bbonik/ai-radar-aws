@@ -26,6 +26,7 @@ _SECTION_MARKERS = [
     "[HOW_DIFFERENT]",
     "[WHEN_TO_PREFER]",
     "[AVAILABILITY]",
+    "[CARD_SUMMARY]",
 ]
 
 # Maximum retries for Bedrock API calls
@@ -216,10 +217,12 @@ class ReportGenerator:
         """
         sections = self._extract_sections(response_text)
 
-        # Validate all sections are present and non-empty
+        # Validate all required sections are present and non-empty
+        # [CARD_SUMMARY] is optional for backward compatibility
+        required_markers = [m for m in _SECTION_MARKERS if m != "[CARD_SUMMARY]"]
         missing_sections = [
-            marker for marker, content in sections.items()
-            if not content.strip()
+            marker for marker in required_markers
+            if not sections.get(marker, "").strip()
         ]
 
         if missing_sections:
@@ -240,6 +243,7 @@ class ReportGenerator:
             how_different=sections["[HOW_DIFFERENT]"].strip(),
             when_to_prefer=sections["[WHEN_TO_PREFER]"].strip(),
             availability=sections["[AVAILABILITY]"].strip(),
+            card_summary=sections.get("[CARD_SUMMARY]", "").strip(),
         )
 
     def _extract_sections(self, text: str) -> dict[str, str]:

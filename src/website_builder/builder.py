@@ -411,7 +411,7 @@ class WebsiteBuilder:
         date_attr_safe = _sanitize_html(date_sortable)
         # Use YYYY-MM-DD to match the timeline graph format
         date_display = date_sortable
-        summary_safe = _sanitize_html(a.report.whats_new[:200])
+        summary_safe = _sanitize_html(a.report.card_summary if a.report.card_summary else a.report.whats_new[:200])
 
         # Build tag chips: prioritize Services first, then Types, then others
         # Services and Types always visible; fill remaining with concepts

@@ -57,7 +57,7 @@ class Config:
     # Prompt Templates
     report_prompt_template: str = field(default="""\
 You are an expert AWS AI/ML analyst. Given the following AWS announcement and \
-any additional research context, produce a structured report with exactly six sections.
+any additional research context, produce a structured report with exactly seven sections.
 
 ## Announcement
 Title: {title}
@@ -69,7 +69,7 @@ Link: {link}
 {research_context}
 
 ## Instructions
-Produce a report with the following six sections. Use clear, concise language \
+Produce a report with the following seven sections. Use clear, concise language \
 suitable for a technical audience. Each section should be a well-formed paragraph.
 
 1. **What's New**: A concise summary of what was announced (2-3 sentences of flowing prose).
@@ -78,6 +78,7 @@ suitable for a technical audience. Each section should be a well-formed paragrap
 4. **How It's Different**: Comparison points using bullet points. Each bullet highlights one difference or advantage.
 5. **When to Prefer It**: Guidance using bullet points. Each bullet describes a scenario or use case.
 6. **Availability**: Status and regions using bullet points. Include GA/Preview status, supported regions, pricing model, and any limitations as separate bullets.
+7. **Card Summary**: A single sentence (max 150 characters) that captures the essence of this announcement. This will be displayed as a preview on the news feed alongside the title. Do NOT repeat the title. Focus on the "so what" — why should someone click to read more?
 
 ## Output Format
 Return your response using exactly these section headers:
@@ -99,6 +100,9 @@ Return your response using exactly these section headers:
 
 [AVAILABILITY]
 <content>
+
+[CARD_SUMMARY]
+<one sentence, max 150 characters>
 """)
 
     graph_prompt_template: str = field(default="""\
