@@ -1736,41 +1736,52 @@ JS_TEMPLATE = """\
   function updateTimeline() {
     if (!window.Chart || !timelineData.labels) return;
 
-    // Filter timeline data based on current time period
-    var now = new Date();
-    var cutoffDate = null;
-    if (filters.timePeriod === 'week') {
-      cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    } else if (filters.timePeriod === 'month') {
-      cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    } else if (filters.timePeriod === '3months') {
-      cutoffDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-    }
-
-    var labels = [], s1 = [], s2 = [], s3 = [], s4 = [], s5 = [];
-    for (var i = 0; i < timelineData.labels.length; i++) {
-      if (cutoffDate) {
-        var d = new Date(timelineData.labels[i] + 'T00:00:00Z');
-        if (d < cutoffDate) continue;
+    try {
+      // Filter timeline data based on current time period
+      var now = new Date();
+      var cutoffDate = null;
+      if (filters.timePeriod === 'week') {
+        cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      } else if (filters.timePeriod === 'month') {
+        cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      } else if (filters.timePeriod === '3months') {
+        cutoffDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
       }
-      labels.push(timelineData.labels[i]);
-      s1.push(timelineData.star1[i] || 0);
-      s2.push(timelineData.star2[i] || 0);
-      s3.push(timelineData.star3[i] || 0);
-      s4.push(timelineData.star4[i] || 0);
-      s5.push(timelineData.star5[i] || 0);
-    }
 
-    renderTimeline(labels, s1, s2, s3, s4, s5);
+      var labels = [], s1 = [], s2 = [], s3 = [], s4 = [], s5 = [];
+      for (var i = 0; i < timelineData.labels.length; i++) {
+        if (cutoffDate) {
+          var d = new Date(timelineData.labels[i] + 'T00:00:00Z');
+          if (d < cutoffDate) continue;
+        }
+        labels.push(timelineData.labels[i]);
+        s1.push(timelineData.star1[i] || 0);
+        s2.push(timelineData.star2[i] || 0);
+        s3.push(timelineData.star3[i] || 0);
+        s4.push(timelineData.star4[i] || 0);
+        s5.push(timelineData.star5[i] || 0);
+      }
+
+      renderTimeline(labels, s1, s2, s3, s4, s5);
+    } catch (e) {
+      // Silent fallback
+    }
   }
 
   function renderTimeline(labels, s1, s2, s3, s4, s5) {
     var ctx = document.getElementById('timeline-chart');
     if (!ctx) return;
 
+    // If chart exists, update data in-place (more reliable than destroy/recreate)
     if (timelineChart) {
-      timelineChart.destroy();
-      timelineChart = null;
+      timelineChart.data.labels = labels;
+      timelineChart.data.datasets[0].data = s5;
+      timelineChart.data.datasets[1].data = s4;
+      timelineChart.data.datasets[2].data = s3;
+      timelineChart.data.datasets[3].data = s2;
+      timelineChart.data.datasets[4].data = s1;
+      timelineChart.update();
+      return;
     }
 
     timelineChart = new Chart(ctx, {
