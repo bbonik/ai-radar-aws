@@ -49,7 +49,7 @@ class Config:
     service_points_high: int = 3      # Bedrock, AgentCore, SageMaker AI, QuickSight
     service_points_medium: int = 2    # SageMaker, Unified Studio, Kiro
     service_points_base: int = 1      # All other relevant services
-    blogpost_points: int = 2          # Points for having blogpost links
+    blogpost_points: int = 3          # Points for having blogpost links
     word_count_scale: float = 0.005   # Points per word (e.g., 400 words = 2 points)
     threshold_2_star: float = 2.0     # Score >= this -> 2-star
     threshold_3_star: float = 3.5     # Score >= this -> 3-star
@@ -166,9 +166,9 @@ Description: {description}
 
 ### Dimension 1: AWS Service (services)
 Valid tags: bedrock, bedrock-agentcore, sagemaker, sagemaker-ai, sagemaker-jumpstart, \
-sagemaker-hyperpod, sagemaker-unified-studio, quicksight, kiro, q-developer, q-business, \
-comprehend, rekognition, textract, transcribe, polly, lex, personalize, kendra, neuron, \
-lambda, cloudwatch, elasticache, opensearch, other-aws
+sagemaker-hyperpod, sagemaker-unified-studio, quicksight, quick, quick-suite, kiro, \
+q-developer, q-business, comprehend, rekognition, textract, transcribe, polly, lex, \
+personalize, kendra, neuron, lambda, cloudwatch, elasticache, opensearch, other-aws
 
 ### Dimension 2: Announcement Type (types)
 Valid tags: new-model, new-feature, new-service, region-expansion, ga-launch, \

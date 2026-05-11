@@ -85,8 +85,11 @@ def _config_strategy():
         [("amazon bedrock", "high"),
          ("amazon bedrock agentcore", "high"),
          ("amazon sagemaker ai", "high"),
-         ("amazon quicksight", "high"),
          ("sagemaker unified studio", "medium"),
+         ("sagemaker jumpstart", "medium"),
+         ("sagemaker hyperpod", "medium"),
+         ("amazon quick", "medium"),
+         ("quicksight", "medium"),
          ("kiro", "medium"),
          ]
     ),

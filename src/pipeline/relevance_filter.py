@@ -164,6 +164,7 @@ class RelevanceFilter:
             r"\bquicksight q\b",
             r"\bamazon quick suite\b",
             r"\bquick suite\b",
+            r"\bamazon quick\b",
             r"\bagentcore\b",
             r"\bagent core\b",
             r"\bkiro\b",

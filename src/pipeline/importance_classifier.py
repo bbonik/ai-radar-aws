@@ -32,18 +32,30 @@ class ImportanceClassifier:
         - score ≥ threshold_5_star → 5★
     """
 
-    # Service tier mappings (lowercase for case-insensitive matching)
+    # Service tier mappings using taxonomy tag names (from tagger output)
+    HIGH_TIER_TAGS = {"bedrock", "bedrock-agentcore", "sagemaker-ai"}
+
+    MEDIUM_TIER_TAGS = {
+        "sagemaker", "sagemaker-jumpstart", "sagemaker-hyperpod",
+        "sagemaker-unified-studio", "kiro", "quicksight", "quick", "quick-suite",
+    }
+
+    # Legacy text-based service detection (fallback when tags unavailable)
     HIGH_TIER_SERVICES = [
         "amazon bedrock",
         "amazon bedrock agentcore",
         "amazon sagemaker ai",
-        "amazon quicksight",
     ]
 
     MEDIUM_TIER_SERVICES = [
         "sagemaker",
         "sagemaker unified studio",
+        "sagemaker jumpstart",
+        "sagemaker hyperpod",
         "kiro",
+        "amazon quick",
+        "quick suite",
+        "quicksight",
     ]
 
     def __init__(self, config: Config, logger: StructuredLogger) -> None:
@@ -88,8 +100,11 @@ class ImportanceClassifier:
         Returns:
             The computed importance score as a float.
         """
-        service_name = self._extract_service(item)
-        service_points = self._get_service_points(service_name)
+        # Use tags for service tier if available, fall back to text matching
+        service_points = self._get_service_points_from_tags(tags)
+        if service_points is None:
+            service_name = self._extract_service(item)
+            service_points = self._get_service_points(service_name)
 
         has_blogpost = self._has_blogpost_links(item)
         blogpost_points = self.config.blogpost_points if has_blogpost else 0
@@ -100,6 +115,25 @@ class ImportanceClassifier:
         tag_bonus = self._compute_tag_bonus(tags)
 
         return service_points + blogpost_points + word_count_contribution + tag_bonus
+
+    def _get_service_points_from_tags(self, tags: AnnouncementTags | None) -> int | None:
+        """Get service tier points from taxonomy tags.
+
+        Returns the highest tier points if any service tags match, or None
+        if no tags are available (caller should fall back to text matching).
+        """
+        if not tags or not tags.services:
+            return None
+
+        # Check if any tag matches high tier
+        if any(tag in self.HIGH_TIER_TAGS for tag in tags.services):
+            return self.config.service_points_high
+
+        # Check if any tag matches medium tier
+        if any(tag in self.MEDIUM_TIER_TAGS for tag in tags.services):
+            return self.config.service_points_medium
+
+        return self.config.service_points_base
 
     def _compute_tag_bonus(self, tags: AnnouncementTags | None) -> float:
         """Compute bonus points based on taxonomy tags.

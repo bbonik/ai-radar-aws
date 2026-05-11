@@ -220,10 +220,10 @@ class Tagger:
 _VALID_SERVICES = {
     "bedrock", "bedrock-agentcore", "sagemaker", "sagemaker-ai",
     "sagemaker-jumpstart", "sagemaker-hyperpod", "sagemaker-unified-studio",
-    "quicksight", "kiro", "q-developer", "q-business", "comprehend",
-    "rekognition", "textract", "transcribe", "polly", "lex", "personalize",
-    "kendra", "neuron", "lambda", "cloudwatch", "elasticache", "opensearch",
-    "other-aws",
+    "quicksight", "quick", "quick-suite", "kiro", "q-developer", "q-business",
+    "comprehend", "rekognition", "textract", "transcribe", "polly", "lex",
+    "personalize", "kendra", "neuron", "lambda", "cloudwatch", "elasticache",
+    "opensearch", "other-aws",
 }
 
 _VALID_TYPES = {

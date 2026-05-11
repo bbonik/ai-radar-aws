@@ -56,7 +56,7 @@ class TestConfigDefaults:
         assert Config().service_points_base == 1
 
     def test_blogpost_points_default(self):
-        assert Config().blogpost_points == 2
+        assert Config().blogpost_points == 3
 
     def test_word_count_scale_default(self):
         assert Config().word_count_scale == 0.005
