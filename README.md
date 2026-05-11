@@ -146,6 +146,18 @@ Deploys updated Lambda code and triggers the website builder to regenerate the s
 ./rebuild-site.sh --pipeline   # Full pipeline: fetch new news + reports + rebuild
 ```
 
+### Retroactively tag existing announcements
+
+```bash
+python scripts/retag_announcements.py
+```
+
+Tags all existing announcements in S3 using Claude Haiku 4.5. New announcements are tagged automatically by the pipeline, but this script is needed for announcements that were processed before the tagging feature was added. After running, rebuild the site:
+
+```bash
+./rebuild-site.sh --skip-cdk
+```
+
 ### Manual deploy (if you prefer)
 
 ```bash
