@@ -328,6 +328,31 @@ class WebsiteBuilder:
                 "tags": tags_list,
             })
 
+        # Compute tag counts per dimension for faceted filter chips
+        tags_by_dimension: dict[str, dict[str, int]] = {
+            "services": defaultdict(int),
+            "types": defaultdict(int),
+            "concepts": defaultdict(int),
+            "use_cases": defaultdict(int),
+            "providers": defaultdict(int),
+        }
+        for a in announcements:
+            for tag in a.tags.services:
+                tags_by_dimension["services"][tag] += 1
+            for tag in a.tags.types:
+                tags_by_dimension["types"][tag] += 1
+            for tag in a.tags.concepts:
+                tags_by_dimension["concepts"][tag] += 1
+            for tag in a.tags.use_cases:
+                tags_by_dimension["use_cases"][tag] += 1
+            for tag in a.tags.providers:
+                tags_by_dimension["providers"][tag] += 1
+
+        # Convert defaultdicts to regular dicts for JSON serialization
+        tags_by_dimension_serializable = {
+            k: dict(v) for k, v in tags_by_dimension.items()
+        }
+
         timeline_data = self._compute_timeline_data(announcements)
 
         js = JS_TEMPLATE.replace(
@@ -341,6 +366,10 @@ class WebsiteBuilder:
         js = js.replace(
             "/*__ALL_TAGS__*/",
             json.dumps(sorted(all_tags_set), ensure_ascii=False),
+        )
+        js = js.replace(
+            "/*__TAGS_BY_DIMENSION__*/",
+            json.dumps(tags_by_dimension_serializable, ensure_ascii=False),
         )
         return js
 
@@ -367,27 +396,17 @@ class WebsiteBuilder:
 
     def _generate_index(self, announcements: list[ProcessedAnnouncement]) -> str:
         """Generate the main index.html page."""
-        services = sorted(set(a.aws_service for a in announcements if a.aws_service))
-
         cards_html = "\n".join(
             self._render_announcement_card(a) for a in announcements
         )
 
-        service_options = "\n".join(
-            f'<option value="{_sanitize_html(s)}">{_sanitize_html(s)}</option>'
-            for s in services
-        )
-
-        return INDEX_TEMPLATE.replace("{{CARDS}}", cards_html).replace(
-            "{{SERVICE_OPTIONS}}", service_options
-        )
+        return INDEX_TEMPLATE.replace("{{CARDS}}", cards_html)
 
     def _render_announcement_card(self, a: ProcessedAnnouncement) -> str:
         """Render a single announcement card for the index listing."""
         slug = _slug_from_link(a.link)
         stars = "\u2605" * a.importance_level + "\u2606" * (3 - a.importance_level)
         title_safe = _sanitize_html(a.title)
-        service_safe = _sanitize_html(a.aws_service)
         date_sortable = _extract_date_sortable(a.pub_date)
         date_attr_safe = _sanitize_html(date_sortable)
         # Use YYYY-MM-DD to match the timeline graph format
@@ -421,7 +440,6 @@ class WebsiteBuilder:
         return (
             f'<article class="announcement-card" '
             f'data-date="{date_attr_safe}" '
-            f'data-service="{service_safe}" '
             f'data-importance="{a.importance_level}" '
             f'data-tags="{all_tags_attr}">\n'
             f'  <div class="card-header">\n'
@@ -660,72 +678,178 @@ body {
 .filters-section {
   background: var(--aws-white);
   border-radius: var(--radius);
-  padding: 1.5rem;
+  padding: 1.25rem 1.5rem;
   margin-bottom: 2rem;
   box-shadow: var(--shadow);
+}
+
+.filters-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
 }
 
 .filters-title {
   font-size: 1rem;
   font-weight: 600;
-  margin-bottom: 1rem;
   color: var(--aws-dark);
 }
 
-.filters-row {
+.filters-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.5rem;
   align-items: center;
 }
 
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.filter-group label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--aws-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.filter-group select,
-.filter-group input {
-  padding: 0.5rem 0.75rem;
+.sort-select {
+  padding: 0.35rem 0.6rem;
   border: 1px solid var(--aws-border);
   border-radius: 4px;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   background: var(--aws-white);
   color: var(--aws-text);
-  min-width: 160px;
-  transition: var(--transition);
-}
-
-.filter-group select:focus,
-.filter-group input:focus {
-  outline: none;
-  border-color: var(--aws-orange);
-  box-shadow: 0 0 0 2px rgba(255, 153, 0, 0.2);
+  cursor: pointer;
 }
 
 .filter-reset {
-  padding: 0.5rem 1rem;
+  padding: 0.35rem 0.75rem;
   background: var(--aws-dark-secondary);
   color: var(--aws-white);
   border: none;
   border-radius: 4px;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   cursor: pointer;
   transition: var(--transition);
-  align-self: flex-end;
 }
 
 .filter-reset:hover {
   background: var(--aws-dark);
+}
+
+.filter-dimension {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--aws-light);
+}
+
+.filter-dimension:first-of-type {
+  border-top: none;
+}
+
+.dimension-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--aws-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  min-width: 65px;
+  padding-top: 0.3rem;
+}
+
+.dimension-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.filter-chip {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  border: 1px solid var(--aws-border);
+  background: var(--aws-white);
+  color: var(--aws-text-secondary);
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.filter-chip:hover {
+  border-color: var(--aws-orange);
+  color: var(--aws-orange-dark);
+}
+
+.filter-chip.active {
+  background: var(--aws-orange);
+  color: var(--aws-white);
+  border-color: var(--aws-orange);
+}
+
+.filter-chip .chip-count {
+  font-size: 0.65rem;
+  opacity: 0.7;
+  margin-left: 0.2rem;
+}
+
+.filter-dimension-collapsed {
+  border-top: 1px solid var(--aws-light);
+  padding: 0.5rem 0;
+}
+
+.show-more-btn {
+  font-size: 0.8rem;
+  color: var(--aws-orange-dark);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem 0;
+  font-weight: 500;
+}
+
+.show-more-btn:hover {
+  color: var(--aws-orange);
+}
+
+.more-filters-content {
+  width: 100%;
+}
+
+.filter-dimension-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.active-filters {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 0 0.25rem;
+  border-top: 1px solid var(--aws-light);
+  margin-top: 0.25rem;
+}
+
+.active-filters-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.active-filter-chip {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 12px;
+  background: var(--aws-orange);
+  color: var(--aws-white);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: var(--transition);
+}
+
+.active-filter-chip:hover {
+  background: var(--aws-orange-dark);
+}
+
+.active-filter-chip .remove-x {
+  font-weight: bold;
+  font-size: 0.85rem;
+  line-height: 1;
 }
 
 /* Timeline Section */
@@ -852,16 +976,7 @@ body {
 .tag-usecase { background: #fff3e0; color: #e65100; }
 .tag-provider { background: #fce4ec; color: #c62828; }
 
-/* Tag Filter */
-.filter-tags-group { position: relative; flex: 1 1 300px; }
-.filter-tags-group input { width: 100%; }
-.active-tags { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-bottom: 0.25rem; }
-.active-tag { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 12px; background: var(--aws-orange); color: var(--aws-white); cursor: pointer; display: flex; align-items: center; gap: 0.25rem; }
-.active-tag .remove-tag { font-weight: bold; }
-.tag-suggestions { position: absolute; top: 100%; left: 0; right: 0; background: var(--aws-white); border: 1px solid var(--aws-border); border-radius: 4px; max-height: 200px; overflow-y: auto; z-index: 100; display: none; box-shadow: var(--shadow); }
-.tag-suggestions.visible { display: block; }
-.tag-suggestion-item { padding: 0.4rem 0.75rem; font-size: 0.85rem; cursor: pointer; transition: var(--transition); }
-.tag-suggestion-item:hover { background: var(--aws-light); }
+/* Tag Filter - kept for card tag chips */
 
 /* Report Tags Section */
 .report-tags-section .report-tags-grid { display: flex; flex-direction: column; gap: 0.75rem; }
@@ -1182,15 +1297,13 @@ body {
     padding: 1rem;
   }
 
-  .filters-row {
-    flex-direction: column;
-    align-items: stretch;
+  .filters-section {
+    padding: 1rem;
   }
 
-  .filter-group select,
-  .filter-group input {
-    min-width: unset;
-    width: 100%;
+  .filter-dimension {
+    flex-direction: column;
+    gap: 0.25rem;
   }
 
   .announcements-grid {
@@ -1248,30 +1361,36 @@ JS_TEMPLATE = """\
   var announcements = /*__ANNOUNCEMENTS_DATA__*/;
   var timelineData = /*__TIMELINE_DATA__*/;
   var allTags = /*__ALL_TAGS__*/;
+  var tagsByDimension = /*__TAGS_BY_DIMENSION__*/;
 
   // Filter state
   var filters = {
     timePeriod: 'all',
-    service: 'all',
-    rankByImportance: false,
-    activeTags: []
+    sort: 'newest',
+    selectedTags: {
+      services: [],
+      types: [],
+      concepts: [],
+      use_cases: [],
+      providers: []
+    }
   };
 
   // DOM references
   var cardsContainer = document.getElementById('announcements-grid');
   var noResults = document.getElementById('no-results');
-  var timePeriodSelect = document.getElementById('filter-time');
-  var serviceSelect = document.getElementById('filter-service');
-  var rankCheckbox = document.getElementById('filter-rank');
+  var sortSelect = document.getElementById('sort-select');
   var resetBtn = document.getElementById('filter-reset');
-  var tagsInput = document.getElementById('filter-tags-input');
-  var tagSuggestions = document.getElementById('tag-suggestions');
-  var activeTagsContainer = document.getElementById('active-tags');
+  var showMoreBtn = document.getElementById('show-more-filters');
+  var moreFiltersContent = document.getElementById('more-filters-content');
+  var activeFiltersSection = document.getElementById('active-filters');
+  var activeFiltersChips = document.getElementById('active-filters-chips');
 
-  // Initialize immediately (script is at bottom of body, DOM is ready)
+  // Initialize
+  buildFilterChips();
   initFilters();
   initTimeline();
-  initTagFilter();
+  initCardTagClicks();
 
   // Fallback: if Chart.js was not ready, retry on window load
   window.addEventListener('load', function() {
@@ -1281,114 +1400,192 @@ JS_TEMPLATE = """\
     }
   });
 
-  function initFilters() {
-    if (timePeriodSelect) {
-      timePeriodSelect.addEventListener('change', function() {
-        filters.timePeriod = this.value;
-        applyFilters();
-      });
-    }
-    if (serviceSelect) {
-      serviceSelect.addEventListener('change', function() {
-        filters.service = this.value;
-        applyFilters();
-      });
-    }
-    if (rankCheckbox) {
-      rankCheckbox.addEventListener('change', function() {
-        filters.rankByImportance = this.checked;
-        applyFilters();
-      });
-    }
-    if (resetBtn) {
-      resetBtn.addEventListener('click', function() {
-        filters.timePeriod = 'all';
-        filters.service = 'all';
-        filters.rankByImportance = false;
-        filters.activeTags = [];
-        if (timePeriodSelect) timePeriodSelect.value = 'all';
-        if (serviceSelect) serviceSelect.value = 'all';
-        if (rankCheckbox) rankCheckbox.checked = false;
-        renderActiveTags();
-        applyFilters();
-      });
-    }
-  }
+  function buildFilterChips() {
+    var dimensions = [
+      { key: 'services', containerId: 'service-chips' },
+      { key: 'types', containerId: 'type-chips' },
+      { key: 'concepts', containerId: 'concept-chips' },
+      { key: 'use_cases', containerId: 'usecase-chips' },
+      { key: 'providers', containerId: 'provider-chips' }
+    ];
 
-  function initTagFilter() {
-    if (!tagsInput || !tagSuggestions) return;
-
-    tagsInput.addEventListener('input', function() {
-      var query = this.value.toLowerCase().trim();
-      if (query.length < 1) {
-        tagSuggestions.classList.remove('visible');
-        return;
-      }
-      var matches = allTags.filter(function(tag) {
-        return tag.toLowerCase().indexOf(query) !== -1 && filters.activeTags.indexOf(tag) === -1;
-      }).slice(0, 10);
-
-      if (matches.length === 0) {
-        tagSuggestions.classList.remove('visible');
-        return;
-      }
-
-      tagSuggestions.innerHTML = matches.map(function(tag) {
-        return '<div class="tag-suggestion-item" data-tag="' + tag + '">' + tag + '</div>';
+    dimensions.forEach(function(dim) {
+      var container = document.getElementById(dim.containerId);
+      if (!container) return;
+      var tags = tagsByDimension[dim.key] || {};
+      // Sort by count descending
+      var sorted = Object.keys(tags).sort(function(a, b) {
+        return tags[b] - tags[a];
+      });
+      container.innerHTML = sorted.map(function(tag) {
+        return '<button class="filter-chip" data-dimension="' + dim.key + '" data-tag="' + tag + '">' +
+          tag + ' <span class="chip-count">(' + tags[tag] + ')</span></button>';
       }).join('');
-      tagSuggestions.classList.add('visible');
-    });
 
-    tagsInput.addEventListener('blur', function() {
-      setTimeout(function() { tagSuggestions.classList.remove('visible'); }, 200);
-    });
-
-    tagSuggestions.addEventListener('click', function(e) {
-      var item = e.target.closest('.tag-suggestion-item');
-      if (item) {
-        addTagFilter(item.getAttribute('data-tag'));
+      // Hide the dimension row if no tags
+      if (sorted.length === 0) {
+        var row = container.closest('.filter-dimension') || container.closest('.filter-dimension-inner');
+        if (row) row.style.display = 'none';
       }
     });
+  }
 
-    // Click on tag chips in cards to add as filter
-    if (cardsContainer) {
-      cardsContainer.addEventListener('click', function(e) {
-        var tagEl = e.target.closest('.tag[data-tag]');
-        if (tagEl) {
-          e.preventDefault();
-          addTagFilter(tagEl.getAttribute('data-tag'));
-        }
+  function initFilters() {
+    // Time chips
+    var timeRow = document.getElementById('filter-time-row');
+    if (timeRow) {
+      timeRow.addEventListener('click', function(e) {
+        var chip = e.target.closest('.filter-chip[data-time]');
+        if (!chip) return;
+        // Deactivate all time chips, activate clicked one
+        timeRow.querySelectorAll('.filter-chip').forEach(function(c) { c.classList.remove('active'); });
+        chip.classList.add('active');
+        filters.timePeriod = chip.getAttribute('data-time');
+        applyFilters();
+      });
+    }
+
+    // Sort select
+    if (sortSelect) {
+      sortSelect.addEventListener('change', function() {
+        filters.sort = this.value;
+        applyFilters();
+      });
+    }
+
+    // Tag dimension chips (services, types, concepts, use_cases, providers)
+    var dimensionContainers = ['service-chips', 'type-chips', 'concept-chips', 'usecase-chips', 'provider-chips'];
+    dimensionContainers.forEach(function(id) {
+      var container = document.getElementById(id);
+      if (!container) return;
+      container.addEventListener('click', function(e) {
+        var chip = e.target.closest('.filter-chip');
+        if (!chip) return;
+        var dimension = chip.getAttribute('data-dimension');
+        var tag = chip.getAttribute('data-tag');
+        toggleTagFilter(dimension, tag, chip);
+      });
+    });
+
+    // Reset button
+    if (resetBtn) {
+      resetBtn.addEventListener('click', resetAllFilters);
+    }
+
+    // Show more button
+    if (showMoreBtn && moreFiltersContent) {
+      showMoreBtn.addEventListener('click', function() {
+        var isHidden = moreFiltersContent.style.display === 'none';
+        moreFiltersContent.style.display = isHidden ? 'block' : 'none';
+        showMoreBtn.textContent = isHidden ? 'Less filters...' : 'More filters...';
       });
     }
   }
 
-  function addTagFilter(tag) {
-    if (filters.activeTags.indexOf(tag) === -1) {
-      filters.activeTags.push(tag);
-      renderActiveTags();
-      applyFilters();
+  function toggleTagFilter(dimension, tag, chipEl) {
+    var arr = filters.selectedTags[dimension];
+    var idx = arr.indexOf(tag);
+    if (idx === -1) {
+      arr.push(tag);
+      if (chipEl) chipEl.classList.add('active');
+    } else {
+      arr.splice(idx, 1);
+      if (chipEl) chipEl.classList.remove('active');
     }
-    if (tagsInput) tagsInput.value = '';
-    if (tagSuggestions) tagSuggestions.classList.remove('visible');
-  }
-
-  function removeTagFilter(tag) {
-    filters.activeTags = filters.activeTags.filter(function(t) { return t !== tag; });
-    renderActiveTags();
+    renderActiveFilters();
     applyFilters();
   }
 
-  function renderActiveTags() {
-    if (!activeTagsContainer) return;
-    activeTagsContainer.innerHTML = filters.activeTags.map(function(tag) {
-      return '<span class="active-tag" data-tag="' + tag + '">' + tag + ' <span class="remove-tag">&times;</span></span>';
-    }).join('');
+  function resetAllFilters() {
+    filters.timePeriod = 'all';
+    filters.sort = 'newest';
+    filters.selectedTags = { services: [], types: [], concepts: [], use_cases: [], providers: [] };
 
-    activeTagsContainer.querySelectorAll('.active-tag').forEach(function(el) {
-      el.addEventListener('click', function() {
-        removeTagFilter(this.getAttribute('data-tag'));
+    // Reset time chips
+    var timeRow = document.getElementById('filter-time-row');
+    if (timeRow) {
+      timeRow.querySelectorAll('.filter-chip').forEach(function(c) { c.classList.remove('active'); });
+      var allChip = timeRow.querySelector('[data-time="all"]');
+      if (allChip) allChip.classList.add('active');
+    }
+
+    // Reset sort
+    if (sortSelect) sortSelect.value = 'newest';
+
+    // Reset all dimension chips
+    document.querySelectorAll('.filter-chip[data-dimension]').forEach(function(c) {
+      c.classList.remove('active');
+    });
+
+    renderActiveFilters();
+    applyFilters();
+  }
+
+  function renderActiveFilters() {
+    var allActive = [];
+    Object.keys(filters.selectedTags).forEach(function(dim) {
+      filters.selectedTags[dim].forEach(function(tag) {
+        allActive.push({ dimension: dim, tag: tag });
       });
     });
+
+    if (activeFiltersSection) {
+      activeFiltersSection.style.display = allActive.length > 0 ? 'flex' : 'none';
+    }
+    if (activeFiltersChips) {
+      activeFiltersChips.innerHTML = allActive.map(function(item) {
+        return '<span class="active-filter-chip" data-dimension="' + item.dimension + '" data-tag="' + item.tag + '">' +
+          item.tag + ' <span class="remove-x">&times;</span></span>';
+      }).join('');
+
+      activeFiltersChips.querySelectorAll('.active-filter-chip').forEach(function(el) {
+        el.addEventListener('click', function() {
+          var dim = this.getAttribute('data-dimension');
+          var tag = this.getAttribute('data-tag');
+          // Remove from state
+          var arr = filters.selectedTags[dim];
+          var idx = arr.indexOf(tag);
+          if (idx !== -1) arr.splice(idx, 1);
+          // Deactivate the chip button
+          var chipBtn = document.querySelector('.filter-chip[data-dimension="' + dim + '"][data-tag="' + tag + '"]');
+          if (chipBtn) chipBtn.classList.remove('active');
+          renderActiveFilters();
+          applyFilters();
+        });
+      });
+    }
+  }
+
+  function initCardTagClicks() {
+    if (!cardsContainer) return;
+    cardsContainer.addEventListener('click', function(e) {
+      var tagEl = e.target.closest('.tag[data-tag]');
+      if (!tagEl) return;
+      e.preventDefault();
+      var tag = tagEl.getAttribute('data-tag');
+      // Determine which dimension this tag belongs to
+      var dimension = findTagDimension(tag);
+      if (dimension) {
+        // Activate the chip in the filter bar
+        var chipBtn = document.querySelector('.filter-chip[data-dimension="' + dimension + '"][data-tag="' + tag + '"]');
+        if (filters.selectedTags[dimension].indexOf(tag) === -1) {
+          filters.selectedTags[dimension].push(tag);
+          if (chipBtn) chipBtn.classList.add('active');
+          renderActiveFilters();
+          applyFilters();
+        }
+      }
+    });
+  }
+
+  function findTagDimension(tag) {
+    var dims = ['services', 'types', 'concepts', 'use_cases', 'providers'];
+    for (var i = 0; i < dims.length; i++) {
+      if (tagsByDimension[dims[i]] && tagsByDimension[dims[i]][tag] !== undefined) {
+        return dims[i];
+      }
+    }
+    return null;
   }
 
   function applyFilters() {
@@ -1397,23 +1594,18 @@ JS_TEMPLATE = """\
     var now = new Date();
     var visibleCount = 0;
 
-    // Determine date threshold based on time period filter
+    // Determine date threshold
     var dateThreshold = null;
-    if (filters.timePeriod === 'day') {
-      dateThreshold = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    } else if (filters.timePeriod === 'week') {
+    if (filters.timePeriod === 'week') {
       dateThreshold = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     } else if (filters.timePeriod === 'month') {
       dateThreshold = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    // Build array for sorting if rank by importance is active
     var cardArray = Array.prototype.slice.call(cards);
 
     cardArray.forEach(function(card) {
       var cardDate = card.getAttribute('data-date');
-      var cardService = card.getAttribute('data-service');
-      var cardImportance = parseInt(card.getAttribute('data-importance'), 10);
       var cardTags = (card.getAttribute('data-tags') || '').split(',').filter(Boolean);
       var visible = true;
 
@@ -1425,17 +1617,24 @@ JS_TEMPLATE = """\
         }
       }
 
-      // Service filter
-      if (filters.service !== 'all' && cardService !== filters.service) {
-        visible = false;
-      }
-
-      // Tag filter (AND logic: card must have ALL active tags)
-      if (visible && filters.activeTags.length > 0) {
-        for (var i = 0; i < filters.activeTags.length; i++) {
-          if (cardTags.indexOf(filters.activeTags[i]) === -1) {
-            visible = false;
-            break;
+      // Tag filters: OR within dimension, AND across dimensions
+      if (visible) {
+        var dims = ['services', 'types', 'concepts', 'use_cases', 'providers'];
+        for (var i = 0; i < dims.length; i++) {
+          var selected = filters.selectedTags[dims[i]];
+          if (selected.length > 0) {
+            // Card must have at least one of the selected tags in this dimension (OR)
+            var hasAny = false;
+            for (var j = 0; j < selected.length; j++) {
+              if (cardTags.indexOf(selected[j]) !== -1) {
+                hasAny = true;
+                break;
+              }
+            }
+            if (!hasAny) {
+              visible = false;
+              break;
+            }
           }
         }
       }
@@ -1444,15 +1643,24 @@ JS_TEMPLATE = """\
       if (visible) visibleCount++;
     });
 
-    // Rank by importance (reorder DOM)
-    if (filters.rankByImportance) {
-      var visibleCards = cardArray.filter(function(c) {
-        return c.style.display !== 'none';
-      });
+    // Sort visible cards
+    if (filters.sort === 'importance') {
+      var visibleCards = cardArray.filter(function(c) { return c.style.display !== 'none'; });
       visibleCards.sort(function(a, b) {
         var impA = parseInt(a.getAttribute('data-importance'), 10);
         var impB = parseInt(b.getAttribute('data-importance'), 10);
         return impB - impA;
+      });
+      visibleCards.forEach(function(card) {
+        cardsContainer.appendChild(card);
+      });
+    } else {
+      // Newest first (restore original order by date)
+      var visibleCards = cardArray.filter(function(c) { return c.style.display !== 'none'; });
+      visibleCards.sort(function(a, b) {
+        var dateA = a.getAttribute('data-date') || '';
+        var dateB = b.getAttribute('data-date') || '';
+        return dateB.localeCompare(dateA);
       });
       visibleCards.forEach(function(card) {
         cardsContainer.appendChild(card);
@@ -1609,37 +1817,58 @@ INDEX_TEMPLATE = """\
   <main class="main-content">
     <!-- Filters -->
     <section class="filters-section" id="filters">
-      <h2 class="filters-title">Filter Announcements</h2>
-      <div class="filters-row">
-        <div class="filter-group">
-          <label for="filter-time">Time Period</label>
-          <select id="filter-time">
-            <option value="all">All Time</option>
-            <option value="day">Last 24 Hours</option>
-            <option value="week">Last Week</option>
-            <option value="month">Last Month</option>
+      <div class="filters-header">
+        <h2 class="filters-title">Filter Announcements</h2>
+        <div class="filters-actions">
+          <select id="sort-select" class="sort-select">
+            <option value="newest">Newest first</option>
+            <option value="importance">Most important first</option>
           </select>
+          <button class="filter-reset" id="filter-reset">Reset</button>
         </div>
-        <div class="filter-group">
-          <label for="filter-service">Service</label>
-          <select id="filter-service">
-            <option value="all">All Services</option>
-            {{SERVICE_OPTIONS}}
-          </select>
-        </div>
-        <div class="filter-group">
-          <label for="filter-rank">Rank by Importance</label>
-          <input type="checkbox" id="filter-rank">
-        </div>
-        <button class="filter-reset" id="filter-reset">Reset Filters</button>
       </div>
-      <div class="filters-row" style="margin-top: 0.75rem;">
-        <div class="filter-group filter-tags-group">
-          <label>Filter by Tags</label>
-          <div class="active-tags" id="active-tags"></div>
-          <input type="text" id="filter-tags-input" placeholder="Type to search tags..." autocomplete="off">
-          <div class="tag-suggestions" id="tag-suggestions"></div>
+
+      <div class="filter-dimension" id="filter-time-row">
+        <span class="dimension-label">Time</span>
+        <div class="dimension-chips">
+          <button class="filter-chip active" data-time="all">All</button>
+          <button class="filter-chip" data-time="week">Last Week</button>
+          <button class="filter-chip" data-time="month">Last Month</button>
         </div>
+      </div>
+
+      <div class="filter-dimension" id="filter-services-row">
+        <span class="dimension-label">Services</span>
+        <div class="dimension-chips" id="service-chips"></div>
+      </div>
+
+      <div class="filter-dimension" id="filter-types-row">
+        <span class="dimension-label">Type</span>
+        <div class="dimension-chips" id="type-chips"></div>
+      </div>
+
+      <div class="filter-dimension" id="filter-concepts-row">
+        <span class="dimension-label">Concepts</span>
+        <div class="dimension-chips" id="concept-chips"></div>
+      </div>
+
+      <div class="filter-dimension filter-dimension-collapsed" id="filter-more-row">
+        <button class="show-more-btn" id="show-more-filters">More filters...</button>
+        <div class="more-filters-content" id="more-filters-content" style="display:none;">
+          <div class="filter-dimension-inner" id="filter-usecases-row">
+            <span class="dimension-label">Use Cases</span>
+            <div class="dimension-chips" id="usecase-chips"></div>
+          </div>
+          <div class="filter-dimension-inner" id="filter-providers-row">
+            <span class="dimension-label">Providers</span>
+            <div class="dimension-chips" id="provider-chips"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="active-filters" id="active-filters" style="display:none;">
+        <span class="dimension-label">Active</span>
+        <div class="active-filters-chips" id="active-filters-chips"></div>
       </div>
     </section>
 

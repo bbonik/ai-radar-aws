@@ -322,7 +322,7 @@ def test_property13_filter_data_attributes_in_html(
 ):
     """Property 13 (HTML verification): Generated HTML cards contain correct data attributes.
 
-    The generated index HTML SHALL include data-service and data-importance
+    The generated index HTML SHALL include data-tags and data-importance
     attributes on each card that match the announcement data, enabling
     client-side filtering.
 
@@ -333,17 +333,20 @@ def test_property13_filter_data_attributes_in_html(
     index_html = files["index.html"]
 
     for announcement in announcements:
-        # Each card should have the correct data-service attribute
-        expected_service_attr = f'data-service="{_sanitize_html(announcement.aws_service)}"'
-        assert expected_service_attr in index_html, (
-            f"Missing data-service attribute for '{announcement.aws_service}'"
-        )
-
         # Each card should have the correct data-importance attribute
         expected_importance_attr = f'data-importance="{announcement.importance_level}"'
         assert expected_importance_attr in index_html, (
             f"Missing data-importance attribute for level {announcement.importance_level}"
         )
+
+        # Each card should have a data-tags attribute containing all tags
+        all_tags = announcement.tags.all_tags()
+        if all_tags:
+            tags_attr_value = _sanitize_html(",".join(all_tags))
+            expected_tags_attr = f'data-tags="{tags_attr_value}"'
+            assert expected_tags_attr in index_html, (
+                f"Missing data-tags attribute for announcement '{announcement.title}'"
+            )
 
 
 # =============================================================================
