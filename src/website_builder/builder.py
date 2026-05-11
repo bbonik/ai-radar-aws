@@ -1730,12 +1730,11 @@ JS_TEMPLATE = """\
     var ctx = document.getElementById('timeline-chart');
     if (!ctx || !window.Chart || !timelineData.labels) return;
     ctx._chartInitialized = true;
-    updateTimeline();
+    renderTimeline(timelineData.labels, timelineData.star1, timelineData.star2, timelineData.star3, timelineData.star4, timelineData.star5);
   }
 
   function updateTimeline() {
-    var ctx = document.getElementById('timeline-chart');
-    if (!ctx || !window.Chart || !timelineData.labels) return;
+    if (!window.Chart || !timelineData.labels) return;
 
     // Filter timeline data based on current time period
     var now = new Date();
@@ -1748,64 +1747,64 @@ JS_TEMPLATE = """\
       cutoffDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
     }
 
-    var filteredLabels = [];
-    var filteredStar1 = [];
-    var filteredStar2 = [];
-    var filteredStar3 = [];
-    var filteredStar4 = [];
-    var filteredStar5 = [];
-
+    var labels = [], s1 = [], s2 = [], s3 = [], s4 = [], s5 = [];
     for (var i = 0; i < timelineData.labels.length; i++) {
-      var dateStr = timelineData.labels[i];
       if (cutoffDate) {
-        var d = new Date(dateStr + 'T00:00:00Z');
+        var d = new Date(timelineData.labels[i] + 'T00:00:00Z');
         if (d < cutoffDate) continue;
       }
-      filteredLabels.push(dateStr);
-      filteredStar1.push(timelineData.star1[i]);
-      filteredStar2.push(timelineData.star2[i]);
-      filteredStar3.push(timelineData.star3[i]);
-      filteredStar4.push(timelineData.star4[i]);
-      filteredStar5.push(timelineData.star5[i]);
+      labels.push(timelineData.labels[i]);
+      s1.push(timelineData.star1[i] || 0);
+      s2.push(timelineData.star2[i] || 0);
+      s3.push(timelineData.star3[i] || 0);
+      s4.push(timelineData.star4[i] || 0);
+      s5.push(timelineData.star5[i] || 0);
     }
 
-    // Destroy existing chart if any
+    renderTimeline(labels, s1, s2, s3, s4, s5);
+  }
+
+  function renderTimeline(labels, s1, s2, s3, s4, s5) {
+    var ctx = document.getElementById('timeline-chart');
+    if (!ctx) return;
+
     if (timelineChart) {
       timelineChart.destroy();
+      timelineChart = null;
     }
 
     timelineChart = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: filteredLabels,
+        labels: labels,
         datasets: [
           {
             label: '5-Star (Critical)',
-            data: filteredStar5,
+            data: s5,
             backgroundColor: '#f924e1',
             borderRadius: 2
           },
           {
             label: '4-Star (Important)',
-            data: filteredStar4,
+            data: s4,
             backgroundColor: '#f9a825',
             borderRadius: 2
           },
           {
             label: '3-Star (Notable)',
-            data: filteredStar3,
+            data: s3,
             backgroundColor: '#24F93D',
             borderRadius: 2
           },
           {
             label: '2-Star (Standard)',
-            data: filteredStar2,
+            data: s2,
             backgroundColor: '#2476F9',
             borderRadius: 2
           },
           {
             label: '1-Star (Peripheral)',
-            data: filteredStar1,
+            data: s1,
             backgroundColor: '#9e9e9e',
             borderRadius: 2
           }
