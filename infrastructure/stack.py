@@ -470,12 +470,12 @@ class AiRadarAwsStack(Stack):
             timeout=Duration.seconds(10),
             memory_size=128,
             environment={
-                "DATA_BUCKET_NAME": self.data_bucket.bucket_name,
+                "LOGS_BUCKET_NAME": self.logs_bucket.bucket_name,
             },
         )
 
-        # Analytics Lambda: write to data bucket (analytics/ prefix)
-        self.data_bucket.grant_write(self.analytics_lambda)
+        # Analytics Lambda: write to logs bucket (events/ prefix)
+        self.logs_bucket.grant_write(self.analytics_lambda)
 
         # ─── HTTP API Gateway (Analytics Events) ──────────────────────────
         self.analytics_api = apigwv2.CfnApi(

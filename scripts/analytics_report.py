@@ -171,7 +171,7 @@ def setup_database(athena, output_location, data_bucket, logs_bucket):
         user_agent STRING
     )
     ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
-    LOCATION 's3://{data_bucket}/analytics/events/'
+    LOCATION 's3://{logs_bucket}/events/'
     """
     run_athena_query(athena, events_table_query, output_location)
 
@@ -353,7 +353,7 @@ def main():
     print(f"  Logs bucket: {logs_bucket}")
 
     # Athena output location
-    output_location = f"s3://{data_bucket}/analytics/athena-results/"
+    output_location = f"s3://{logs_bucket}/athena-results/"
 
     # Setup
     athena = boto3.client("athena")

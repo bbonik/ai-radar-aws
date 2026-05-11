@@ -52,12 +52,12 @@ def handler(event, context):
         enriched_events.append(enriched)
 
     # Write to S3 as JSONL (one file per invocation)
-    bucket = os.environ.get("DATA_BUCKET_NAME", "")
+    bucket = os.environ.get("LOGS_BUCKET_NAME", "")
     if not bucket:
-        return {"statusCode": 500, "body": "DATA_BUCKET_NAME not configured"}
+        return {"statusCode": 500, "body": "LOGS_BUCKET_NAME not configured"}
 
     file_id = uuid.uuid4().hex[:12]
-    key = f"analytics/events/{date_prefix}/{file_id}.jsonl"
+    key = f"events/{date_prefix}/{file_id}.jsonl"
 
     jsonl_content = "\n".join(json.dumps(e) for e in enriched_events)
 
