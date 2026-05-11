@@ -76,31 +76,26 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the AWS "What's New" R
 ### Prerequisites
 
 - Python 3.11+
+- Node.js 20+ (18 works with warnings)
 - AWS CLI configured with credentials
-- AWS CDK v2 (`npm install -g aws-cdk`)
 - Bedrock model access enabled (Claude Sonnet 4.6, Opus 4.6, Haiku 4.5)
 
-### Setup
+### Setup & Deploy
 
 ```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-dev.txt
-pip install aws-cdk-lib constructs
+git clone https://github.com/bbonik/ai-radar-aws.git
+cd ai-radar-aws
+./setup.sh    # One-time: checks prerequisites, creates venv, installs everything
+./deploy.sh   # Deploys the full stack to AWS
 ```
 
-### Deploy
-
-```bash
-./deploy.sh
-```
-
-Handles everything: installs deps, runs tests, bootstraps CDK, deploys the stack, and shows the CloudFront URL.
+That's it. Two commands from zero to a running website.
 
 ## Scripts Reference
 
 | Script | Purpose | When to Use |
 |--------|---------|-------------|
+| `./setup.sh` | Check prerequisites, create venv, install deps | First time after cloning |
 | `./deploy.sh` | Full deployment (tests + CDK + deploy) | First deploy or major infra changes |
 | `./deploy.sh --destroy` | Tear down the entire stack | Remove all resources |
 | `./rebuild-site.sh` | Deploy code + rebuild website | After code changes |
