@@ -390,18 +390,27 @@ class WebsiteBuilder:
         service_safe = _sanitize_html(a.aws_service)
         date_sortable = _extract_date_sortable(a.pub_date)
         date_attr_safe = _sanitize_html(date_sortable)
-        date_display = _format_date_display(a.pub_date)
+        # Use YYYY-MM-DD to match the timeline graph format
+        date_display = date_sortable
         summary_safe = _sanitize_html(a.report.whats_new[:200])
 
-        # Build tag chips (show concepts + types, max 5 on card)
-        card_tags = a.tags.concepts + a.tags.types
-        card_tags = card_tags[:5]
+        # Build tag chips: prioritize Services first, then Types, then others
+        # Services and Types always visible; fill remaining with concepts
+        card_tags_ordered: list[tuple[str, str]] = []  # (tag, css_class)
+        for tag in a.tags.services:
+            card_tags_ordered.append((tag, "tag-service"))
+        for tag in a.tags.types:
+            card_tags_ordered.append((tag, "tag-type"))
+        for tag in a.tags.concepts[:3]:  # max 3 concepts after services+types
+            card_tags_ordered.append((tag, "tag-concept"))
+        # Cap total at 6 to avoid overflow
+        card_tags_ordered = card_tags_ordered[:6]
+
         tags_html = ""
-        if card_tags:
+        if card_tags_ordered:
             chips = []
-            for tag in card_tags:
+            for tag, css_class in card_tags_ordered:
                 tag_safe = _sanitize_html(tag)
-                css_class = _tag_css_class(tag, a.tags)
                 chips.append(f'<span class="tag {css_class}" data-tag="{tag_safe}">{tag_safe}</span>')
             tags_html = f'  <div class="card-tags">{"".join(chips)}</div>\n'
 
@@ -420,7 +429,6 @@ class WebsiteBuilder:
             f'    <span class="card-date">{date_display}</span>\n'
             f'  </div>\n'
             f'  <h3 class="card-title"><a href="reports/{slug}.html">{title_safe}</a></h3>\n'
-            f'  <p class="card-service">{service_safe}</p>\n'
             f'{tags_html}'
             f'  <p class="card-summary">{summary_safe}</p>\n'
             f'  <a href="reports/{slug}.html" class="card-link">Read full report &rarr;</a>\n'
@@ -810,13 +818,6 @@ body {
 
 .card-title a:hover {
   color: var(--aws-orange-dark);
-}
-
-.card-service {
-  font-size: 0.8rem;
-  color: var(--aws-orange-dark);
-  font-weight: 500;
-  margin-bottom: 0.5rem;
 }
 
 .card-summary {
