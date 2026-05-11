@@ -503,13 +503,14 @@ class TestGracefulDegradation:
         mock_research_response.__enter__ = MagicMock(return_value=mock_research_response)
         mock_research_response.__exit__ = MagicMock(return_value=False)
 
-        # Bedrock: first call throttles (raises), subsequent calls succeed
+        # Bedrock: first calls throttle (tagger + first report gen), subsequent calls succeed
         call_count = {"n": 0}
 
         def bedrock_side_effect(**kwargs):
             call_count["n"] += 1
-            if call_count["n"] <= 3:
-                # First announcement's report generation fails (3 attempts = initial + 2 retries)
+            if call_count["n"] <= 6:
+                # First 6 calls throttle (tagger retries for first announcement = 3,
+                # then report generator retries for first announcement = 3)
                 from botocore.exceptions import ClientError
                 raise ClientError(
                     {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},

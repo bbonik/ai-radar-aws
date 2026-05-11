@@ -30,6 +30,7 @@ from src.pipeline.report_generator import ReportGenerator, ReportGenerationError
 from src.pipeline.research_agent import ResearchAgent
 from src.pipeline.rss_fetcher import RSSFetcher
 from src.pipeline.storage_manager import StorageManager
+from src.pipeline.tagger import Tagger
 
 
 class PipelineOrchestrator:
@@ -56,6 +57,7 @@ class PipelineOrchestrator:
         self._rss_fetcher = RSSFetcher(config, logger)
         self._relevance_filter = RelevanceFilter(config, logger)
         self._importance_classifier = ImportanceClassifier(config, logger)
+        self._tagger = Tagger(config, logger)
         self._research_agent = ResearchAgent(config, context, logger)
         self._report_generator = ReportGenerator(config, logger)
         self._graph_generator = GraphGenerator(config, logger)
@@ -164,18 +166,21 @@ class PipelineOrchestrator:
             # Stage 4: Classify importance
             star_level, score = self._importance_classifier.classify(item)
 
-            # Stage 5: Research
+            # Stage 5: Tag (non-fatal — empty tags on failure)
+            tags = self._tagger.tag(item)
+
+            # Stage 6: Research
             research_context = self._research_agent.research(item)
             if research_context.skipped:
                 research_skipped = True
 
-            # Stage 6: Generate report
+            # Stage 7: Generate report
             report = self._report_generator.generate(item, research_context)
 
-            # Stage 7: Generate graph (only for 2-star and 3-star)
+            # Stage 8: Generate graph (only for 2-star and 3-star)
             mermaid_graph = self._graph_generator.generate(item, report, star_level, research_context)
 
-            # Stage 8: Store the processed announcement
+            # Stage 9: Store the processed announcement
             processed = ProcessedAnnouncement(
                 title=item.title,
                 description=item.description,
@@ -190,6 +195,7 @@ class PipelineOrchestrator:
                 first_detected=datetime.now(timezone.utc).isoformat(
                     timespec="milliseconds"
                 ).replace("+00:00", "Z"),
+                tags=tags,
             )
 
             saved = self._storage_manager.save_announcement(processed)

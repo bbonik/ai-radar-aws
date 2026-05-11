@@ -39,6 +39,12 @@ class Config:
     llm_b_max_tokens: int = 2048
     llm_b_inference_profile_name: str = "ai-radar-graph-generator"
 
+    # LLM C - Tagger (Claude Haiku 4.5)
+    llm_c_model_id: str = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+    llm_c_temperature: float = 0.1
+    llm_c_max_tokens: int = 1024
+    llm_c_inference_profile_name: str = "ai-radar-tagger"
+
     # Importance Scoring
     service_points_high: int = 3      # Bedrock, AgentCore, SageMaker AI, QuickSight
     service_points_medium: int = 2    # SageMaker, Unified Studio, Kiro
@@ -133,6 +139,59 @@ Return ONLY the Mermaid diagram code, starting with ```mermaid and ending with `
 ```mermaid
 graph TD
     ...
+```
+""")
+
+    tagger_prompt_template: str = field(default="""\
+You are an expert AWS AI/ML taxonomy classifier. Given an AWS announcement, \
+assign tags from the following multi-dimensional taxonomy. Only use tags from \
+the provided lists below.
+
+## Announcement
+Title: {title}
+Description: {description}
+
+## Taxonomy
+
+### Dimension 1: AWS Service (services)
+Valid tags: bedrock, bedrock-agentcore, sagemaker, sagemaker-ai, sagemaker-jumpstart, \
+sagemaker-hyperpod, sagemaker-unified-studio, quicksight, kiro, q-developer, q-business, \
+comprehend, rekognition, textract, transcribe, polly, lex, personalize, kendra, neuron, \
+lambda, cloudwatch, elasticache, opensearch, other-aws
+
+### Dimension 2: Announcement Type (types)
+Valid tags: new-model, new-feature, new-service, region-expansion, ga-launch, \
+preview-launch, integration, performance, pricing, security, deprecation
+
+### Dimension 3: AI/ML Concept (concepts)
+Valid tags: agentic-ai, genai, llm, rag, fine-tuning, inference, training, embedding, \
+multimodal, nlp, computer-vision, speech, mlops, responsible-ai, coding-assistant, \
+conversational-ai, recommendation, search, document-ai, data-analytics
+
+### Dimension 4: Use Case / Industry (use_cases)
+Valid tags: enterprise, developer-tools, devops, e-commerce, healthcare, financial, \
+government, observability, migration, open-source, cost-optimization, multi-region
+
+### Dimension 5: Model Provider (providers)
+Valid tags: anthropic, openai, meta, google, nvidia, mistral, cohere, stability, \
+amazon, alibaba, community
+
+## Instructions
+- Assign 1-3 tags per dimension (fewer is better; only assign what clearly applies)
+- For providers dimension: only assign if a specific model provider is mentioned
+- If no tags clearly apply for a dimension, return an empty list for that dimension
+- Return ONLY valid JSON with no additional text
+
+## Output Format
+Return a JSON object with exactly these keys:
+```json
+{{
+  "services": [...],
+  "types": [...],
+  "concepts": [...],
+  "use_cases": [...],
+  "providers": [...]
+}}
 ```
 """)
 

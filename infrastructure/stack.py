@@ -106,6 +106,24 @@ class AiRadarAwsStack(Stack):
             },
         )
 
+        # LLM C - Tagger (Claude Haiku 4.5)
+        self.inference_profile_c = CfnResource(
+            self,
+            "InferenceProfileC",
+            type="AWS::Bedrock::ApplicationInferenceProfile",
+            properties={
+                "InferenceProfileName": config.llm_c_inference_profile_name,
+                "ModelSource": {
+                    "CopyFrom": f"arn:aws:bedrock:{config.aws_region}::inference-profile/{config.llm_c_model_id}",
+                },
+                "Tags": [
+                    {"Key": "Project", "Value": "ai-radar-aws"},
+                    {"Key": "Purpose", "Value": "tagging"},
+                    {"Key": "Model", "Value": "claude-haiku-4-5"},
+                ],
+            },
+        )
+
         # ─── Lambda 2: Website Builder ────────────────────────────────────
         # Defined first so Lambda 1 can reference its function name/ARN
         self.website_builder_lambda = lambda_.Function(
@@ -277,6 +295,9 @@ class AiRadarAwsStack(Stack):
                 "INFERENCE_PROFILE_B_ARN": self.inference_profile_b.get_att(
                     "InferenceProfileArn"
                 ).to_string(),
+                "INFERENCE_PROFILE_C_ARN": self.inference_profile_c.get_att(
+                    "InferenceProfileArn"
+                ).to_string(),
             },
         )
 
@@ -312,12 +333,15 @@ class AiRadarAwsStack(Stack):
                     # Application inference profiles (created by this stack)
                     self.inference_profile_a.get_att("InferenceProfileArn").to_string(),
                     self.inference_profile_b.get_att("InferenceProfileArn").to_string(),
+                    self.inference_profile_c.get_att("InferenceProfileArn").to_string(),
                     # System-defined cross-region inference profiles
                     f"arn:aws:bedrock:*::inference-profile/{config.llm_a_model_id}",
                     f"arn:aws:bedrock:*::inference-profile/{config.llm_b_model_id}",
+                    f"arn:aws:bedrock:*::inference-profile/{config.llm_c_model_id}",
                     # Underlying foundation models (Bedrock resolves to these)
                     "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-6",
                     "arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-4-6-v1",
+                    "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
                 ],
             )
         )

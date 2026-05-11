@@ -4,6 +4,16 @@ Tracking document for bugs, improvements, and feature requests.
 
 ---
 
+## Batch 2 (2026-05-09)
+
+### Features
+
+| # | Status | Description |
+|---|--------|-------------|
+| F1 | ✅ Done | **Multi-dimensional taxonomy tagging** — LLM-based tagging using Claude Haiku 4.5. Each announcement gets tags across 5 dimensions: AWS Service, Announcement Type, AI/ML Concept, Use Case, Model Provider. Tags visible on cards and report pages. Tag-based filtering with autocomplete on the main feed. |
+
+---
+
 ## Batch 1 (2026-05-09)
 
 ### Bugs

@@ -132,6 +132,7 @@ class TestProcessedAnnouncement:
             "mermaid_graph",
             "blogpost_links",
             "first_detected",
+            "tags",
         }
         assert set(row.keys()) == expected_keys
 

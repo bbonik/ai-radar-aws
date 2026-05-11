@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 
 
@@ -13,6 +14,56 @@ class RSSItem:
     description: str
     pub_date: str
     link: str
+
+
+@dataclass
+class AnnouncementTags:
+    """Multi-dimensional taxonomy tags for an announcement.
+
+    Dimensions:
+    - services: AWS services involved (Dimension 1)
+    - types: Announcement type (Dimension 2)
+    - concepts: AI/ML concepts (Dimension 3)
+    - use_cases: Use case / industry (Dimension 4)
+    - providers: Model providers (Dimension 5)
+    """
+
+    services: list[str] = field(default_factory=list)
+    types: list[str] = field(default_factory=list)
+    concepts: list[str] = field(default_factory=list)
+    use_cases: list[str] = field(default_factory=list)
+    providers: list[str] = field(default_factory=list)
+
+    def all_tags(self) -> list[str]:
+        """Return all tags as a flat list."""
+        return self.services + self.types + self.concepts + self.use_cases + self.providers
+
+    def serialize(self) -> str:
+        """Serialize to JSON string for CSV storage."""
+        return json.dumps({
+            "services": self.services,
+            "types": self.types,
+            "concepts": self.concepts,
+            "use_cases": self.use_cases,
+            "providers": self.providers,
+        })
+
+    @classmethod
+    def deserialize(cls, data: str) -> "AnnouncementTags":
+        """Deserialize from JSON string."""
+        if not data or data == "":
+            return cls()
+        try:
+            d = json.loads(data)
+            return cls(
+                services=d.get("services", []),
+                types=d.get("types", []),
+                concepts=d.get("concepts", []),
+                use_cases=d.get("use_cases", []),
+                providers=d.get("providers", []),
+            )
+        except (json.JSONDecodeError, TypeError):
+            return cls()
 
 
 @dataclass
@@ -60,6 +111,7 @@ class ProcessedAnnouncement:
     mermaid_graph: str | None  # None for 1-star
     blogpost_links: list[str]
     first_detected: str  # ISO timestamp
+    tags: AnnouncementTags = field(default_factory=AnnouncementTags)
 
     def to_csv_row(self) -> dict:
         """Serialize to a flat dict matching the CSV schema columns."""
@@ -80,6 +132,7 @@ class ProcessedAnnouncement:
             "mermaid_graph": self.mermaid_graph if self.mermaid_graph is not None else "",
             "blogpost_links": "|".join(self.blogpost_links),
             "first_detected": self.first_detected,
+            "tags": self.tags.serialize(),
         }
 
     @classmethod
@@ -99,6 +152,10 @@ class ProcessedAnnouncement:
         blogpost_links_raw = row["blogpost_links"]
         blogpost_links = blogpost_links_raw.split("|") if blogpost_links_raw else []
 
+        # Tags column may not exist in older CSV rows (backward compatibility)
+        tags_raw = row.get("tags", "")
+        tags = AnnouncementTags.deserialize(tags_raw)
+
         return cls(
             title=row["title"],
             description=row["description"],
@@ -111,6 +168,7 @@ class ProcessedAnnouncement:
             mermaid_graph=mermaid_graph,
             blogpost_links=blogpost_links,
             first_detected=row["first_detected"],
+            tags=tags,
         )
 
 

@@ -22,7 +22,7 @@ from collections import defaultdict
 
 from src.config import Config
 from src.shared.logger import StructuredLogger
-from src.shared.models import ProcessedAnnouncement
+from src.shared.models import AnnouncementTags, ProcessedAnnouncement
 
 
 def _sanitize_html(text: str) -> str:
@@ -197,6 +197,21 @@ def _slug_from_link(link: str) -> str:
     return slug
 
 
+def _tag_css_class(tag: str, tags: "AnnouncementTags") -> str:
+    """Determine the CSS class for a tag based on which dimension it belongs to."""
+    if tag in tags.services:
+        return "tag-service"
+    elif tag in tags.types:
+        return "tag-type"
+    elif tag in tags.concepts:
+        return "tag-concept"
+    elif tag in tags.use_cases:
+        return "tag-usecase"
+    elif tag in tags.providers:
+        return "tag-provider"
+    return "tag-concept"
+
+
 class WebsiteBuilder:
     """Generates static HTML/CSS/JS website from announcement CSV data.
 
@@ -299,7 +314,10 @@ class WebsiteBuilder:
     def _generate_js(self, announcements: list[ProcessedAnnouncement]) -> str:
         """Generate the shared JavaScript with filtering, timeline, and PDF."""
         announcements_data = []
+        all_tags_set: set[str] = set()
         for a in announcements:
+            tags_list = a.tags.all_tags()
+            all_tags_set.update(tags_list)
             announcements_data.append({
                 "title": a.title,
                 "pub_date": a.pub_date,
@@ -307,6 +325,7 @@ class WebsiteBuilder:
                 "aws_service": a.aws_service,
                 "importance_level": a.importance_level,
                 "slug": _slug_from_link(a.link),
+                "tags": tags_list,
             })
 
         timeline_data = self._compute_timeline_data(announcements)
@@ -318,6 +337,10 @@ class WebsiteBuilder:
         js = js.replace(
             "/*__TIMELINE_DATA__*/",
             json.dumps(timeline_data, ensure_ascii=False),
+        )
+        js = js.replace(
+            "/*__ALL_TAGS__*/",
+            json.dumps(sorted(all_tags_set), ensure_ascii=False),
         )
         return js
 
@@ -370,17 +393,35 @@ class WebsiteBuilder:
         date_display = _format_date_display(a.pub_date)
         summary_safe = _sanitize_html(a.report.whats_new[:200])
 
+        # Build tag chips (show concepts + types, max 5 on card)
+        card_tags = a.tags.concepts + a.tags.types
+        card_tags = card_tags[:5]
+        tags_html = ""
+        if card_tags:
+            chips = []
+            for tag in card_tags:
+                tag_safe = _sanitize_html(tag)
+                css_class = _tag_css_class(tag, a.tags)
+                chips.append(f'<span class="tag {css_class}" data-tag="{tag_safe}">{tag_safe}</span>')
+            tags_html = f'  <div class="card-tags">{"".join(chips)}</div>\n'
+
+        # All tags for data attribute (for JS filtering)
+        all_tags = a.tags.all_tags()
+        all_tags_attr = _sanitize_html(",".join(all_tags)) if all_tags else ""
+
         return (
             f'<article class="announcement-card" '
             f'data-date="{date_attr_safe}" '
             f'data-service="{service_safe}" '
-            f'data-importance="{a.importance_level}">\n'
+            f'data-importance="{a.importance_level}" '
+            f'data-tags="{all_tags_attr}">\n'
             f'  <div class="card-header">\n'
             f'    <span class="card-stars importance-{a.importance_level}">{stars}</span>\n'
             f'    <span class="card-date">{date_display}</span>\n'
             f'  </div>\n'
             f'  <h3 class="card-title"><a href="reports/{slug}.html">{title_safe}</a></h3>\n'
             f'  <p class="card-service">{service_safe}</p>\n'
+            f'{tags_html}'
             f'  <p class="card-summary">{summary_safe}</p>\n'
             f'  <a href="reports/{slug}.html" class="card-link">Read full report &rarr;</a>\n'
             f'</article>'
@@ -424,6 +465,42 @@ class WebsiteBuilder:
                 '</section>'
             )
 
+        # Tags section (all tags grouped by dimension)
+        tags_section = ""
+        if a.tags.all_tags():
+            tags_parts = []
+            tags_parts.append('<section class="report-section report-tags-section">\n')
+            tags_parts.append('  <h2>Tags</h2>\n')
+            tags_parts.append('  <div class="report-tags-grid">\n')
+            if a.tags.services:
+                tags_parts.append('    <div class="report-tag-group"><span class="tag-group-label">Services</span>')
+                for t in a.tags.services:
+                    tags_parts.append(f'<span class="tag tag-service">{_sanitize_html(t)}</span>')
+                tags_parts.append('</div>\n')
+            if a.tags.types:
+                tags_parts.append('    <div class="report-tag-group"><span class="tag-group-label">Type</span>')
+                for t in a.tags.types:
+                    tags_parts.append(f'<span class="tag tag-type">{_sanitize_html(t)}</span>')
+                tags_parts.append('</div>\n')
+            if a.tags.concepts:
+                tags_parts.append('    <div class="report-tag-group"><span class="tag-group-label">Concepts</span>')
+                for t in a.tags.concepts:
+                    tags_parts.append(f'<span class="tag tag-concept">{_sanitize_html(t)}</span>')
+                tags_parts.append('</div>\n')
+            if a.tags.use_cases:
+                tags_parts.append('    <div class="report-tag-group"><span class="tag-group-label">Use Cases</span>')
+                for t in a.tags.use_cases:
+                    tags_parts.append(f'<span class="tag tag-usecase">{_sanitize_html(t)}</span>')
+                tags_parts.append('</div>\n')
+            if a.tags.providers:
+                tags_parts.append('    <div class="report-tag-group"><span class="tag-group-label">Providers</span>')
+                for t in a.tags.providers:
+                    tags_parts.append(f'<span class="tag tag-provider">{_sanitize_html(t)}</span>')
+                tags_parts.append('</div>\n')
+            tags_parts.append('  </div>\n')
+            tags_parts.append('</section>')
+            tags_section = "".join(tags_parts)
+
         blogpost_links_html = ""
         if a.blogpost_links:
             links_items = "\n".join(
@@ -452,6 +529,7 @@ class WebsiteBuilder:
             .replace("{{HOW_DIFFERENT}}", how_different_html)
             .replace("{{WHEN_TO_PREFER}}", when_to_prefer_html)
             .replace("{{AVAILABILITY}}", availability_html)
+            .replace("{{TAGS_SECTION}}", tags_section)
             .replace("{{MERMAID_SECTION}}", mermaid_section)
             .replace("{{BLOGPOST_LINKS}}", blogpost_links_html)
         )
@@ -762,6 +840,32 @@ body {
 .card-link:hover {
   color: var(--aws-orange);
 }
+
+/* Tag Chips */
+.card-tags { display: flex; flex-wrap: wrap; gap: 0.25rem; margin: 0.5rem 0; }
+.tag { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 12px; font-weight: 500; cursor: pointer; transition: var(--transition); }
+.tag:hover { opacity: 0.8; }
+.tag-service { background: #e3f2fd; color: #1565c0; }
+.tag-type { background: #f3e5f5; color: #7b1fa2; }
+.tag-concept { background: #e8f5e9; color: #2e7d32; }
+.tag-usecase { background: #fff3e0; color: #e65100; }
+.tag-provider { background: #fce4ec; color: #c62828; }
+
+/* Tag Filter */
+.filter-tags-group { position: relative; flex: 1 1 300px; }
+.filter-tags-group input { width: 100%; }
+.active-tags { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-bottom: 0.25rem; }
+.active-tag { font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 12px; background: var(--aws-orange); color: var(--aws-white); cursor: pointer; display: flex; align-items: center; gap: 0.25rem; }
+.active-tag .remove-tag { font-weight: bold; }
+.tag-suggestions { position: absolute; top: 100%; left: 0; right: 0; background: var(--aws-white); border: 1px solid var(--aws-border); border-radius: 4px; max-height: 200px; overflow-y: auto; z-index: 100; display: none; box-shadow: var(--shadow); }
+.tag-suggestions.visible { display: block; }
+.tag-suggestion-item { padding: 0.4rem 0.75rem; font-size: 0.85rem; cursor: pointer; transition: var(--transition); }
+.tag-suggestion-item:hover { background: var(--aws-light); }
+
+/* Report Tags Section */
+.report-tags-section .report-tags-grid { display: flex; flex-direction: column; gap: 0.75rem; }
+.report-tag-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+.tag-group-label { font-size: 0.75rem; font-weight: 600; color: var(--aws-text-secondary); text-transform: uppercase; letter-spacing: 0.5px; min-width: 70px; }
 
 /* Report Page */
 .report-container {
@@ -1142,12 +1246,14 @@ JS_TEMPLATE = """\
   // Announcement data injected at build time
   var announcements = /*__ANNOUNCEMENTS_DATA__*/;
   var timelineData = /*__TIMELINE_DATA__*/;
+  var allTags = /*__ALL_TAGS__*/;
 
   // Filter state
   var filters = {
     timePeriod: 'all',
     service: 'all',
-    rankByImportance: false
+    rankByImportance: false,
+    activeTags: []
   };
 
   // DOM references
@@ -1157,10 +1263,14 @@ JS_TEMPLATE = """\
   var serviceSelect = document.getElementById('filter-service');
   var rankCheckbox = document.getElementById('filter-rank');
   var resetBtn = document.getElementById('filter-reset');
+  var tagsInput = document.getElementById('filter-tags-input');
+  var tagSuggestions = document.getElementById('tag-suggestions');
+  var activeTagsContainer = document.getElementById('active-tags');
 
   // Initialize immediately (script is at bottom of body, DOM is ready)
   initFilters();
   initTimeline();
+  initTagFilter();
 
   // Fallback: if Chart.js was not ready, retry on window load
   window.addEventListener('load', function() {
@@ -1194,12 +1304,90 @@ JS_TEMPLATE = """\
         filters.timePeriod = 'all';
         filters.service = 'all';
         filters.rankByImportance = false;
+        filters.activeTags = [];
         if (timePeriodSelect) timePeriodSelect.value = 'all';
         if (serviceSelect) serviceSelect.value = 'all';
         if (rankCheckbox) rankCheckbox.checked = false;
+        renderActiveTags();
         applyFilters();
       });
     }
+  }
+
+  function initTagFilter() {
+    if (!tagsInput || !tagSuggestions) return;
+
+    tagsInput.addEventListener('input', function() {
+      var query = this.value.toLowerCase().trim();
+      if (query.length < 1) {
+        tagSuggestions.classList.remove('visible');
+        return;
+      }
+      var matches = allTags.filter(function(tag) {
+        return tag.toLowerCase().indexOf(query) !== -1 && filters.activeTags.indexOf(tag) === -1;
+      }).slice(0, 10);
+
+      if (matches.length === 0) {
+        tagSuggestions.classList.remove('visible');
+        return;
+      }
+
+      tagSuggestions.innerHTML = matches.map(function(tag) {
+        return '<div class="tag-suggestion-item" data-tag="' + tag + '">' + tag + '</div>';
+      }).join('');
+      tagSuggestions.classList.add('visible');
+    });
+
+    tagsInput.addEventListener('blur', function() {
+      setTimeout(function() { tagSuggestions.classList.remove('visible'); }, 200);
+    });
+
+    tagSuggestions.addEventListener('click', function(e) {
+      var item = e.target.closest('.tag-suggestion-item');
+      if (item) {
+        addTagFilter(item.getAttribute('data-tag'));
+      }
+    });
+
+    // Click on tag chips in cards to add as filter
+    if (cardsContainer) {
+      cardsContainer.addEventListener('click', function(e) {
+        var tagEl = e.target.closest('.tag[data-tag]');
+        if (tagEl) {
+          e.preventDefault();
+          addTagFilter(tagEl.getAttribute('data-tag'));
+        }
+      });
+    }
+  }
+
+  function addTagFilter(tag) {
+    if (filters.activeTags.indexOf(tag) === -1) {
+      filters.activeTags.push(tag);
+      renderActiveTags();
+      applyFilters();
+    }
+    if (tagsInput) tagsInput.value = '';
+    if (tagSuggestions) tagSuggestions.classList.remove('visible');
+  }
+
+  function removeTagFilter(tag) {
+    filters.activeTags = filters.activeTags.filter(function(t) { return t !== tag; });
+    renderActiveTags();
+    applyFilters();
+  }
+
+  function renderActiveTags() {
+    if (!activeTagsContainer) return;
+    activeTagsContainer.innerHTML = filters.activeTags.map(function(tag) {
+      return '<span class="active-tag" data-tag="' + tag + '">' + tag + ' <span class="remove-tag">&times;</span></span>';
+    }).join('');
+
+    activeTagsContainer.querySelectorAll('.active-tag').forEach(function(el) {
+      el.addEventListener('click', function() {
+        removeTagFilter(this.getAttribute('data-tag'));
+      });
+    });
   }
 
   function applyFilters() {
@@ -1225,6 +1413,7 @@ JS_TEMPLATE = """\
       var cardDate = card.getAttribute('data-date');
       var cardService = card.getAttribute('data-service');
       var cardImportance = parseInt(card.getAttribute('data-importance'), 10);
+      var cardTags = (card.getAttribute('data-tags') || '').split(',').filter(Boolean);
       var visible = true;
 
       // Time period filter
@@ -1238,6 +1427,16 @@ JS_TEMPLATE = """\
       // Service filter
       if (filters.service !== 'all' && cardService !== filters.service) {
         visible = false;
+      }
+
+      // Tag filter (AND logic: card must have ALL active tags)
+      if (visible && filters.activeTags.length > 0) {
+        for (var i = 0; i < filters.activeTags.length; i++) {
+          if (cardTags.indexOf(filters.activeTags[i]) === -1) {
+            visible = false;
+            break;
+          }
+        }
       }
 
       card.style.display = visible ? '' : 'none';
@@ -1433,6 +1632,14 @@ INDEX_TEMPLATE = """\
         </div>
         <button class="filter-reset" id="filter-reset">Reset Filters</button>
       </div>
+      <div class="filters-row" style="margin-top: 0.75rem;">
+        <div class="filter-group filter-tags-group">
+          <label>Filter by Tags</label>
+          <div class="active-tags" id="active-tags"></div>
+          <input type="text" id="filter-tags-input" placeholder="Type to search tags..." autocomplete="off">
+          <div class="tag-suggestions" id="tag-suggestions"></div>
+        </div>
+      </div>
     </section>
 
     <!-- Timeline -->
@@ -1561,6 +1768,7 @@ REPORT_TEMPLATE = """\
         {{AVAILABILITY}}
       </section>
 
+      {{TAGS_SECTION}}
       {{MERMAID_SECTION}}
       {{BLOGPOST_LINKS}}
     </div>
