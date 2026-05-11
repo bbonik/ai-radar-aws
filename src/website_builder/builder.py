@@ -589,10 +589,10 @@ CSS_TEMPLATE = """\
   --aws-warning: #ff9900;
   --aws-error: #d13212;
   --star-1: #9e9e9e;
-  --star-2: #1976d2;
-  --star-3: #2e7d32;
+  --star-2: #2476F9;
+  --star-3: #24F93D;
   --star-4: #f9a825;
-  --star-5: #c62828;
+  --star-5: #f924e1;
   --radius: 8px;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.15);
@@ -1736,7 +1736,7 @@ JS_TEMPLATE = """\
           {
             label: '5-Star (Critical)',
             data: timelineData.star5,
-            backgroundColor: '#c62828',
+            backgroundColor: '#f924e1',
             borderRadius: 2
           },
           {
@@ -1748,13 +1748,13 @@ JS_TEMPLATE = """\
           {
             label: '3-Star (Notable)',
             data: timelineData.star3,
-            backgroundColor: '#2e7d32',
+            backgroundColor: '#24F93D',
             borderRadius: 2
           },
           {
             label: '2-Star (Standard)',
             data: timelineData.star2,
-            backgroundColor: '#1976d2',
+            backgroundColor: '#2476F9',
             borderRadius: 2
           },
           {
