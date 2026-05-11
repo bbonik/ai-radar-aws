@@ -380,7 +380,7 @@ class WebsiteBuilder:
     def _compute_timeline_data(self, announcements: list[ProcessedAnnouncement]) -> dict:
         """Compute timeline data: count per day segmented by importance level."""
         day_counts: dict[str, dict[str, int]] = defaultdict(
-            lambda: {"star1": 0, "star2": 0, "star3": 0}
+            lambda: {"star1": 0, "star2": 0, "star3": 0, "star4": 0, "star5": 0}
         )
         for a in announcements:
             date_str = _extract_date_sortable(a.pub_date)
@@ -392,6 +392,8 @@ class WebsiteBuilder:
             "star1": [day_counts[d]["star1"] for d in sorted_dates],
             "star2": [day_counts[d]["star2"] for d in sorted_dates],
             "star3": [day_counts[d]["star3"] for d in sorted_dates],
+            "star4": [day_counts[d]["star4"] for d in sorted_dates],
+            "star5": [day_counts[d]["star5"] for d in sorted_dates],
         }
 
     # -------------------------------------------------------------------------
@@ -409,7 +411,7 @@ class WebsiteBuilder:
     def _render_announcement_card(self, a: ProcessedAnnouncement) -> str:
         """Render a single announcement card for the index listing."""
         slug = _slug_from_link(a.link)
-        stars = "\u2605" * a.importance_level + "\u2606" * (3 - a.importance_level)
+        stars = "\u2605" * a.importance_level + "\u2606" * (5 - a.importance_level)
         title_safe = _sanitize_html(a.title)
         date_sortable = _extract_date_sortable(a.pub_date)
         date_attr_safe = _sanitize_html(date_sortable)
@@ -463,7 +465,7 @@ class WebsiteBuilder:
 
     def _generate_report_page(self, a: ProcessedAnnouncement) -> str:
         """Generate an individual report page for an announcement."""
-        stars = "\u2605" * a.importance_level + "\u2606" * (3 - a.importance_level)
+        stars = "\u2605" * a.importance_level + "\u2606" * (5 - a.importance_level)
         title_safe = _sanitize_html(a.title)
         service_safe = _sanitize_html(a.aws_service)
         date_display = _format_date_display(a.pub_date)
@@ -586,9 +588,11 @@ CSS_TEMPLATE = """\
   --aws-success: #1d8102;
   --aws-warning: #ff9900;
   --aws-error: #d13212;
-  --star-1: #6c757d;
-  --star-2: #ff9900;
-  --star-3: #d13212;
+  --star-1: #8c9196;
+  --star-2: #2196a8;
+  --star-3: #e6a817;
+  --star-4: #e65100;
+  --star-5: #c62828;
   --radius: 8px;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.15);
@@ -894,6 +898,14 @@ body {
   transform: translateY(-2px);
 }
 
+.announcement-card[data-importance="5"] {
+  border-left-color: var(--star-5);
+}
+
+.announcement-card[data-importance="4"] {
+  border-left-color: var(--star-4);
+}
+
 .announcement-card[data-importance="3"] {
   border-left-color: var(--star-3);
 }
@@ -917,6 +929,8 @@ body {
   font-size: 1rem;
 }
 
+.importance-5 { color: var(--star-5); }
+.importance-4 { color: var(--star-4); }
 .importance-3 { color: var(--star-3); }
 .importance-2 { color: var(--star-2); }
 .importance-1 { color: var(--star-1); }
@@ -1720,21 +1734,33 @@ JS_TEMPLATE = """\
         labels: timelineData.labels,
         datasets: [
           {
-            label: '3-Star (Critical)',
+            label: '5-Star (Critical)',
+            data: timelineData.star5,
+            backgroundColor: '#c62828',
+            borderRadius: 2
+          },
+          {
+            label: '4-Star (Important)',
+            data: timelineData.star4,
+            backgroundColor: '#e65100',
+            borderRadius: 2
+          },
+          {
+            label: '3-Star (Notable)',
             data: timelineData.star3,
-            backgroundColor: '#d13212',
+            backgroundColor: '#e6a817',
             borderRadius: 2
           },
           {
-            label: '2-Star (Important)',
+            label: '2-Star (Standard)',
             data: timelineData.star2,
-            backgroundColor: '#ff9900',
+            backgroundColor: '#2196a8',
             borderRadius: 2
           },
           {
-            label: '1-Star (Standard)',
+            label: '1-Star (Peripheral)',
             data: timelineData.star1,
-            backgroundColor: '#6c757d',
+            backgroundColor: '#8c9196',
             borderRadius: 2
           }
         ]
@@ -2041,7 +2067,7 @@ INDEX_TEMPLATE = """\
         <li><strong>Collection</strong> — Daily monitoring of the AWS "What's New" RSS feed</li>
         <li><strong>Filtering</strong> — AI-powered relevance detection for AI/ML/GenAI topics</li>
         <li><strong>Taxonomy Tagging</strong> — LLM-based classification across 5 dimensions (services, type, concepts, use cases, providers)</li>
-        <li><strong>Importance Scoring</strong> — Point-based system with tag bonuses (1-3 stars)</li>
+        <li><strong>Importance Scoring</strong> — Point-based system with tag bonuses (1-5 stars)</li>
         <li><strong>Research Phase</strong> — Follows links to blog posts and documentation, extracting technical details and context</li>
         <li><strong>Report Generation</strong> — Claude Sonnet produces structured 6-section analysis using research context</li>
         <li><strong>Architecture Diagrams</strong> — Claude Opus generates Mermaid diagrams for high-importance items</li>
@@ -2174,7 +2200,7 @@ REPORT_TEMPLATE = """\
         <li><strong>Collection</strong> — Daily monitoring of the AWS "What's New" RSS feed</li>
         <li><strong>Filtering</strong> — AI-powered relevance detection for AI/ML/GenAI topics</li>
         <li><strong>Taxonomy Tagging</strong> — LLM-based classification across 5 dimensions (services, type, concepts, use cases, providers)</li>
-        <li><strong>Importance Scoring</strong> — Point-based system with tag bonuses (1-3 stars)</li>
+        <li><strong>Importance Scoring</strong> — Point-based system with tag bonuses (1-5 stars)</li>
         <li><strong>Research Phase</strong> — Follows links to blog posts and documentation, extracting technical details and context</li>
         <li><strong>Report Generation</strong> — Claude Sonnet produces structured 6-section analysis using research context</li>
         <li><strong>Architecture Diagrams</strong> — Claude Opus generates Mermaid diagrams for high-importance items</li>

@@ -70,8 +70,10 @@ def _config_strategy():
         service_points_base=st.integers(min_value=0, max_value=5),
         blogpost_points=st.integers(min_value=0, max_value=10),
         word_count_scale=st.floats(min_value=0.001, max_value=0.1, allow_nan=False, allow_infinity=False),
-        threshold_2_star=st.floats(min_value=1.0, max_value=10.0, allow_nan=False, allow_infinity=False),
-        threshold_3_star=st.floats(min_value=10.1, max_value=20.0, allow_nan=False, allow_infinity=False),
+        threshold_2_star=st.floats(min_value=1.0, max_value=5.0, allow_nan=False, allow_infinity=False),
+        threshold_3_star=st.floats(min_value=5.1, max_value=10.0, allow_nan=False, allow_infinity=False),
+        threshold_4_star=st.floats(min_value=10.1, max_value=15.0, allow_nan=False, allow_infinity=False),
+        threshold_5_star=st.floats(min_value=15.1, max_value=20.0, allow_nan=False, allow_infinity=False),
     )
 
 
@@ -224,8 +226,10 @@ def test_property5_score_additive_with_varied_config(
 
     **Validates: Requirements 3.1, 3.2, 3.3, 3.4**
     """
-    # Ensure threshold_3_star > threshold_2_star
+    # Ensure thresholds are strictly ordered
     assume(config.threshold_3_star > config.threshold_2_star)
+    assume(config.threshold_4_star > config.threshold_3_star)
+    assume(config.threshold_5_star > config.threshold_4_star)
 
     classifier = _make_classifier(config)
 
@@ -280,9 +284,11 @@ def test_property6_star_level_by_threshold(score: float):
     For any computed Importance_Score, the assigned star level SHALL be:
     - 1-star if score < threshold_2_star
     - 2-star if threshold_2_star <= score < threshold_3_star
-    - 3-star if score >= threshold_3_star
+    - 3-star if threshold_3_star <= score < threshold_4_star
+    - 4-star if threshold_4_star <= score < threshold_5_star
+    - 5-star if score >= threshold_5_star
 
-    The result is always exactly one of {1, 2, 3}.
+    The result is always exactly one of {1, 2, 3, 4, 5}.
 
     **Validates: Requirements 3.5, 3.6**
     """
@@ -292,9 +298,9 @@ def test_property6_star_level_by_threshold(score: float):
     # Directly test the _score_to_stars method
     star_level = classifier._score_to_stars(score)
 
-    # Verify the result is always one of {1, 2, 3}
-    assert star_level in {1, 2, 3}, (
-        f"Star level must be 1, 2, or 3. Got: {star_level} for score {score}"
+    # Verify the result is always one of {1, 2, 3, 4, 5}
+    assert star_level in {1, 2, 3, 4, 5}, (
+        f"Star level must be 1, 2, 3, 4, or 5. Got: {star_level} for score {score}"
     )
 
     # Verify threshold logic
@@ -309,10 +315,22 @@ def test_property6_star_level_by_threshold(score: float):
             f"and < threshold_3_star ({config.threshold_3_star}) "
             f"should yield 2-star, got {star_level}"
         )
-    else:
+    elif score < config.threshold_4_star:
         assert star_level == 3, (
             f"Score {score} >= threshold_3_star ({config.threshold_3_star}) "
+            f"and < threshold_4_star ({config.threshold_4_star}) "
             f"should yield 3-star, got {star_level}"
+        )
+    elif score < config.threshold_5_star:
+        assert star_level == 4, (
+            f"Score {score} >= threshold_4_star ({config.threshold_4_star}) "
+            f"and < threshold_5_star ({config.threshold_5_star}) "
+            f"should yield 4-star, got {star_level}"
+        )
+    else:
+        assert star_level == 5, (
+            f"Score {score} >= threshold_5_star ({config.threshold_5_star}) "
+            f"should yield 5-star, got {star_level}"
         )
 
 
@@ -325,19 +343,22 @@ def test_property6_star_level_with_varied_thresholds(config: Config, score: floa
     """Property 6: Star level threshold logic holds for any valid thresholds.
 
     The threshold comparison must work correctly regardless of the specific
-    threshold values, as long as threshold_3_star > threshold_2_star.
+    threshold values, as long as threshold_5_star > threshold_4_star >
+    threshold_3_star > threshold_2_star.
 
     **Validates: Requirements 3.5, 3.6**
     """
-    # Ensure threshold_3_star > threshold_2_star (valid config)
+    # Ensure thresholds are strictly ordered (valid config)
     assume(config.threshold_3_star > config.threshold_2_star)
+    assume(config.threshold_4_star > config.threshold_3_star)
+    assume(config.threshold_5_star > config.threshold_4_star)
 
     classifier = _make_classifier(config)
     star_level = classifier._score_to_stars(score)
 
-    # Result must always be exactly one of {1, 2, 3}
-    assert star_level in {1, 2, 3}, (
-        f"Star level must be 1, 2, or 3. Got: {star_level}"
+    # Result must always be exactly one of {1, 2, 3, 4, 5}
+    assert star_level in {1, 2, 3, 4, 5}, (
+        f"Star level must be 1, 2, 3, 4, or 5. Got: {star_level}"
     )
 
     # Verify threshold logic
@@ -352,10 +373,22 @@ def test_property6_star_level_with_varied_thresholds(config: Config, score: floa
             f"and < threshold_3_star ({config.threshold_3_star}) "
             f"should yield 2-star, got {star_level}"
         )
-    else:
+    elif score < config.threshold_4_star:
         assert star_level == 3, (
             f"Score {score} >= threshold_3_star ({config.threshold_3_star}) "
+            f"and < threshold_4_star ({config.threshold_4_star}) "
             f"should yield 3-star, got {star_level}"
+        )
+    elif score < config.threshold_5_star:
+        assert star_level == 4, (
+            f"Score {score} >= threshold_4_star ({config.threshold_4_star}) "
+            f"and < threshold_5_star ({config.threshold_5_star}) "
+            f"should yield 4-star, got {star_level}"
+        )
+    else:
+        assert star_level == 5, (
+            f"Score {score} >= threshold_5_star ({config.threshold_5_star}) "
+            f"should yield 5-star, got {star_level}"
         )
 
 

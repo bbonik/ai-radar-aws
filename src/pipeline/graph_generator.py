@@ -1,9 +1,9 @@
 """Graph Generator module for the AI Radar AWS pipeline.
 
 Uses Amazon Bedrock (Claude Opus via global cross-region inference profile)
-to generate Mermaid diagrams for 2-star and 3-star announcements. Skips
-generation for 1-star announcements. Retries up to 2× on failure with 1s
-delay; returns None on persistent failure.
+to generate Mermaid diagrams for 3-star and above announcements. Skips
+generation for 1-star and 2-star announcements. Retries up to 2× on failure
+with 1s delay; returns None on persistent failure.
 """
 
 import json
@@ -34,7 +34,7 @@ class GraphGenerator:
     inference profile ARN for LLM B (Claude Opus) with global cross-region
     inference profile as the model source.
 
-    Skips generation for importance_level == 1 (returns None without LLM call).
+    Skips generation for importance_level < 3 (returns None without LLM call).
     Retries up to 2× on failure with 1s delay. Returns None on persistent failure.
     """
 
@@ -62,10 +62,10 @@ class GraphGenerator:
         Returns:
             A Mermaid diagram string, or None if skipped or generation failed.
         """
-        # Skip graph generation for 1-star announcements
-        if importance_level == 1:
+        # Skip graph generation for 1-star and 2-star announcements
+        if importance_level < 3:
             self._logger.info(
-                "Skipping graph generation for 1-star announcement",
+                "Skipping graph generation for low-importance announcement",
                 announcement_link=item.link,
                 importance_level=importance_level,
             )

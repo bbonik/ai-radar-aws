@@ -58,7 +58,7 @@ _service_strategy = st.sampled_from([
 ])
 
 # Strategy for importance levels
-_importance_strategy = st.sampled_from([1, 2, 3])
+_importance_strategy = st.sampled_from([1, 2, 3, 4, 5])
 
 # Strategy for Report
 _report_strategy = st.builds(
@@ -262,7 +262,7 @@ def test_property16_header_metadata_in_report_content_div(
     )
 
     # Importance stars must be within the report-content div
-    stars = "\u2605" * announcement.importance_level + "\u2606" * (3 - announcement.importance_level)
+    stars = "\u2605" * announcement.importance_level + "\u2606" * (5 - announcement.importance_level)
     assert stars in report_content_div, (
         "Importance level stars missing from #report-content div (won't appear in PDF header)"
     )

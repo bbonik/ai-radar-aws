@@ -51,8 +51,10 @@ class Config:
     service_points_base: int = 1      # All other relevant services
     blogpost_points: int = 2          # Points for having blogpost links
     word_count_scale: float = 0.005   # Points per word (e.g., 400 words = 2 points)
-    threshold_2_star: float = 3.0     # Score >= this -> 2-star
-    threshold_3_star: float = 5.0     # Score >= this -> 3-star
+    threshold_2_star: float = 2.0     # Score >= this -> 2-star
+    threshold_3_star: float = 3.5     # Score >= this -> 3-star
+    threshold_4_star: float = 5.0     # Score >= this -> 4-star
+    threshold_5_star: float = 6.5     # Score >= this -> 5-star
 
     # Tag-based scoring bonuses (applied when tags are available)
     tag_bonus_new_model: float = 1.0      # Bonus for "new-model" type tag

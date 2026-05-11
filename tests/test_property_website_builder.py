@@ -66,7 +66,7 @@ _service_strategy = st.sampled_from([
 ])
 
 # Strategy for importance levels
-_importance_strategy = st.sampled_from([1, 2, 3])
+_importance_strategy = st.sampled_from([1, 2, 3, 4, 5])
 
 # Strategy for Report
 _report_strategy = st.builds(
@@ -186,7 +186,7 @@ def test_property12_report_html_contains_all_required_content(
     )
 
     # Importance level indicator (star characters)
-    stars = "\u2605" * announcement.importance_level + "\u2606" * (3 - announcement.importance_level)
+    stars = "\u2605" * announcement.importance_level + "\u2606" * (5 - announcement.importance_level)
     assert stars in report_html, (
         f"Importance level indicator (stars) missing from report HTML"
     )
@@ -459,7 +459,7 @@ def test_property15_timeline_data_aggregation(
 
     # Compute expected counts independently
     expected_day_counts: dict[str, dict[str, int]] = defaultdict(
-        lambda: {"star1": 0, "star2": 0, "star3": 0}
+        lambda: {"star1": 0, "star2": 0, "star3": 0, "star4": 0, "star5": 0}
     )
     for a in announcements:
         date_str = a.pub_date[:10] if len(a.pub_date) >= 10 else a.pub_date
@@ -487,6 +487,14 @@ def test_property15_timeline_data_aggregation(
             f"Star3 count mismatch for {date}: "
             f"got {timeline_data['star3'][i]}, expected {expected_day_counts[date]['star3']}"
         )
+        assert timeline_data["star4"][i] == expected_day_counts[date]["star4"], (
+            f"Star4 count mismatch for {date}: "
+            f"got {timeline_data['star4'][i]}, expected {expected_day_counts[date]['star4']}"
+        )
+        assert timeline_data["star5"][i] == expected_day_counts[date]["star5"], (
+            f"Star5 count mismatch for {date}: "
+            f"got {timeline_data['star5'][i]}, expected {expected_day_counts[date]['star5']}"
+        )
 
     # Verify: sum of segments equals total count for each day
     for i, date in enumerate(expected_sorted_dates):
@@ -494,6 +502,8 @@ def test_property15_timeline_data_aggregation(
             timeline_data["star1"][i]
             + timeline_data["star2"][i]
             + timeline_data["star3"][i]
+            + timeline_data["star4"][i]
+            + timeline_data["star5"][i]
         )
         expected_total = sum(
             1 for a in announcements

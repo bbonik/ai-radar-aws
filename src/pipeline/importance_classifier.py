@@ -3,8 +3,7 @@
 Computes a point-based importance score for each announcement by
 combining service tier points, blogpost link presence, word count,
 and tag-based bonuses (when taxonomy tags are available).
-Maps the raw score to a star level (1, 2, or 3) using configurable
-thresholds.
+Maps the raw score to a star level (1–5) using configurable thresholds.
 """
 
 import re
@@ -28,7 +27,9 @@ class ImportanceClassifier:
     Star mapping:
         - score < threshold_2_star → 1★
         - threshold_2_star ≤ score < threshold_3_star → 2★
-        - score ≥ threshold_3_star → 3★
+        - threshold_3_star ≤ score < threshold_4_star → 3★
+        - threshold_4_star ≤ score < threshold_5_star → 4★
+        - score ≥ threshold_5_star → 5★
     """
 
     # Service tier mappings (lowercase for case-insensitive matching)
@@ -60,7 +61,7 @@ class ImportanceClassifier:
             tags: Optional taxonomy tags (used for tag-based score bonuses).
 
         Returns:
-            A tuple of (star_level, raw_score) where star_level is 1, 2, or 3.
+            A tuple of (star_level, raw_score) where star_level is 1–5.
         """
         score = self.compute_score(item, tags)
         star_level = self._score_to_stars(score)
@@ -202,9 +203,13 @@ class ImportanceClassifier:
             score: The raw importance score.
 
         Returns:
-            Star level: 1, 2, or 3.
+            Star level: 1, 2, 3, 4, or 5.
         """
-        if score >= self.config.threshold_3_star:
+        if score >= self.config.threshold_5_star:
+            return 5
+        elif score >= self.config.threshold_4_star:
+            return 4
+        elif score >= self.config.threshold_3_star:
             return 3
         elif score >= self.config.threshold_2_star:
             return 2

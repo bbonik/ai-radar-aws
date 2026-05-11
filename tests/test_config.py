@@ -62,10 +62,16 @@ class TestConfigDefaults:
         assert Config().word_count_scale == 0.005
 
     def test_threshold_2_star_default(self):
-        assert Config().threshold_2_star == 3.0
+        assert Config().threshold_2_star == 2.0
 
     def test_threshold_3_star_default(self):
-        assert Config().threshold_3_star == 5.0
+        assert Config().threshold_3_star == 3.5
+
+    def test_threshold_4_star_default(self):
+        assert Config().threshold_4_star == 5.0
+
+    def test_threshold_5_star_default(self):
+        assert Config().threshold_5_star == 6.5
 
     def test_research_timeout_default(self):
         assert Config().research_timeout_per_announcement == 300
@@ -133,6 +139,8 @@ class TestConfigTypes:
             config.word_count_scale,
             config.threshold_2_star,
             config.threshold_3_star,
+            config.threshold_4_star,
+            config.threshold_5_star,
         ]
         for value in float_fields:
             assert isinstance(value, float)

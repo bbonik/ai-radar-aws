@@ -82,9 +82,9 @@ def test_property9_importance_level_1_returns_none_without_llm_call(
     item: RSSItem,
     report: Report,
 ):
-    """Property 9: Graph Generator returns None for importance_level == 1 without LLM call.
+    """Property 9: Graph Generator returns None for importance_level < 3 without LLM call.
 
-    For any announcement with importance_level == 1, the Graph Generator SHALL
+    For any announcement with importance_level < 3, the Graph Generator SHALL
     return None without invoking the LLM. The Bedrock client's invoke_model
     method SHALL NOT be called.
 
@@ -99,36 +99,39 @@ def test_property9_importance_level_1_returns_none_without_llm_call(
 
     generator = GraphGenerator(config=config, logger=logger)
 
-    result = generator.generate(item=item, report=report, importance_level=1)
+    # Test both importance_level 1 and 2
+    for level in (1, 2):
+        mock_bedrock.reset_mock()
+        result = generator.generate(item=item, report=report, importance_level=level)
 
-    # Must return None for 1-star announcements
-    assert result is None, (
-        f"Graph Generator should return None for importance_level=1, "
-        f"but got: {result!r}"
-    )
+        # Must return None for low-importance announcements
+        assert result is None, (
+            f"Graph Generator should return None for importance_level={level}, "
+            f"but got: {result!r}"
+        )
 
-    # Bedrock invoke_model must NOT have been called
-    mock_bedrock.invoke_model.assert_not_called(), (
-        "Bedrock invoke_model should NOT be called for importance_level=1"
-    )
+        # Bedrock invoke_model must NOT have been called
+        mock_bedrock.invoke_model.assert_not_called(), (
+            f"Bedrock invoke_model should NOT be called for importance_level={level}"
+        )
 
 
 @given(
     item=rss_item_strategy,
     report=report_strategy,
-    importance_level=st.integers(min_value=2, max_value=3),
+    importance_level=st.integers(min_value=3, max_value=5),
 )
 @settings(max_examples=200)
 @patch("src.pipeline.graph_generator.boto3.client")
-def test_property9_importance_level_gte_2_invokes_llm(
+def test_property9_importance_level_gte_3_invokes_llm(
     mock_boto_client,
     item: RSSItem,
     report: Report,
     importance_level: int,
 ):
-    """Property 9: Graph Generator invokes LLM for importance_level >= 2.
+    """Property 9: Graph Generator invokes LLM for importance_level >= 3.
 
-    For any announcement with importance_level >= 2, the Graph Generator SHALL
+    For any announcement with importance_level >= 3, the Graph Generator SHALL
     attempt Mermaid diagram generation by invoking the Bedrock LLM. The
     invoke_model method SHALL be called at least once.
 
