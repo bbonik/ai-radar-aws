@@ -9,8 +9,8 @@ The system uses a **two-Lambda architecture** for resilience and separation of c
 ```
 ┌──────────────┐     ┌─────────────────────────────────────────────────────┐
 │  EventBridge │────▶│  Lambda 1: Report Generation Pipeline (15 min)      │
-│  (Daily)     │     │  RSS → Dedup → Filter → Classify → Research →      │
-└──────────────┘     │  Report (Bedrock Sonnet) → Graph (Bedrock Opus) →   │
+│  (Daily)     │     │  RSS → Dedup → Filter → Classify → Tag (Haiku) →   │
+└──────────────┘     │  Research → Report (Sonnet) → Graph (Opus) →        │
                      │  Store CSV to S3                                     │
                      └──────────────────────────┬──────────────────────────┘
                                                 │ async invoke
@@ -21,7 +21,7 @@ The system uses a **two-Lambda architecture** for resilience and separation of c
                      └─────────────────────────────────────────────────────┘
 ```
 
-**Key services:** Python 3.11, Amazon Bedrock (Claude Sonnet + Opus), CDK, S3, CloudFront, WAF, EventBridge
+**Key services:** Python 3.11, Amazon Bedrock (Claude Sonnet + Opus + Haiku), CDK, S3, CloudFront, WAF, EventBridge
 
 ## Project Structure
 
@@ -35,6 +35,7 @@ aws-news-extractor/
 │   │   ├── rss_fetcher.py       # RSS feed retrieval
 │   │   ├── relevance_filter.py  # AI/ML keyword filtering
 │   │   ├── importance_classifier.py  # Point-based scoring
+│   │   ├── tagger.py            # LLM-based taxonomy tagging (Haiku 4.5)
 │   │   ├── research_agent.py    # Link content extraction
 │   │   ├── report_generator.py  # Bedrock Sonnet reports
 │   │   ├── graph_generator.py   # Bedrock Opus Mermaid diagrams
@@ -187,12 +188,13 @@ No secrets are stored in the repository. All credentials come from IAM roles at 
 3. **Deduplication** skips previously processed announcements
 4. **Relevance Filter** applies regex patterns for AI/ML/GenAI keywords
 5. **Importance Classifier** computes a point score → 1/2/3 stars
-6. **Research Agent** follows blogpost/doc links for additional context
-7. **Report Generator** calls Bedrock (Claude Sonnet) for structured reports
-8. **Graph Generator** calls Bedrock (Claude Opus) for Mermaid diagrams (2-3 star only)
-9. **Storage Manager** appends results to CSV in S3
-10. **Lambda 2** is invoked asynchronously to rebuild the static website
-11. **CloudFront** serves the updated site with WAF protection
+6. **Taxonomy Tagger** calls Bedrock (Claude Haiku 4.5) to assign multi-dimensional tags (services, type, concepts, use cases, model providers)
+7. **Research Agent** follows blogpost/doc links for additional context
+8. **Report Generator** calls Bedrock (Claude Sonnet) for structured reports
+9. **Graph Generator** calls Bedrock (Claude Opus) for Mermaid diagrams (2-3 star only)
+10. **Storage Manager** appends results to CSV in S3
+11. **Lambda 2** is invoked asynchronously to rebuild the static website
+12. **CloudFront** serves the updated site with WAF protection
 
 ## License
 
