@@ -108,6 +108,7 @@ That's it. Two commands from zero to a running website.
 | `python scripts/reclassify_announcements.py` | Recompute importance scores | After scoring changes |
 | `python scripts/generate_card_summaries.py` | Generate card summaries | After adding summary feature |
 | `python scripts/generate_missing_graphs.py` | Backfill visual summaries | After lowering graph threshold |
+| `python scripts/regenerate_all_graphs.py` | Clear + regenerate ALL visual summaries | After changing graph style/prompt |
 | `python scripts/analytics_report.py --days 30` | Generate analytics CSV | Check website usage metrics |
 
 ## How It Works
