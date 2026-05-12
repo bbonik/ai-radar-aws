@@ -272,7 +272,7 @@ class WebsiteBuilder:
         # Sort announcements by date (newest first)
         sorted_announcements = sorted(
             announcements,
-            key=lambda a: a.pub_date,
+            key=lambda a: _extract_date_sortable(a.pub_date),
             reverse=True,
         )
 
@@ -1437,6 +1437,7 @@ JS_TEMPLATE = """\
   initFilters();
   initTimeline();
   initCardTagClicks();
+  applyFilters(); // Sort cards by date on initial load
 
   // Fallback: if Chart.js was not ready, retry on window load
   window.addEventListener('load', function() {
