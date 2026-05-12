@@ -133,7 +133,7 @@ That's it. Two commands from zero to a running website.
 - **Taxonomy tags** — 5 dimensions: Services, Type, Concepts, Use Cases, Providers
 - **Report pages** — 6 structured sections with bullet points + Mermaid visual summaries
 - **PDF export** — Client-side PDF generation via html2pdf.js
-- **Timeline chart** — Stacked bar chart showing announcement volume over time
+- **Timeline chart** — Stacked bar chart showing announcement volume over time (auto-aggregates to weekly when >90 days)
 - **About modal** — Project methodology explanation
 - **Analytics** — Client-side event tracking (pageviews, clicks, filter usage)
 
