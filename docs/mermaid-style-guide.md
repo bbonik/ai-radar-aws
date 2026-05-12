@@ -155,3 +155,146 @@ classDef external fill:#f5f5f5,stroke:#616161,color:#616161
 - `:::className` syntax for applying classes is supported in Mermaid 9.3+
 - Our CDN loads Mermaid 10, so all features are available
 - The `{{Label}}` hexagon syntax requires proper escaping in the LLM output
+
+
+---
+
+## Validation & Retry Loop (Plan B)
+
+### Problem
+
+LLMs occasionally produce syntactically invalid Mermaid code:
+- Unbalanced brackets/parentheses
+- Invalid characters in node IDs
+- Malformed arrow syntax
+- Missing closing quotes in labels
+- Invalid `classDef` declarations
+
+When this happens, Mermaid.js fails to render and shows an error box on the page.
+
+### Solution: Server-side validation with LLM retry
+
+After the LLM generates the Mermaid code, validate it before storing. If invalid, retry with error feedback.
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│ LLM generates│────▶│ Validate     │────▶│ Store in CSV│
+│ Mermaid code │     │ (regex-based)│     │             │
+└─────────────┘     └──────┬───────┘     └─────────────┘
+                           │ INVALID
+                           ▼
+                    ┌──────────────┐
+                    │ Retry with   │──── max 2 retries
+                    │ error message│
+                    └──────┬───────┘
+                           │ STILL INVALID
+                           ▼
+                    ┌──────────────┐
+                    │ Store None   │
+                    │ (no diagram) │
+                    └──────────────┘
+```
+
+### Validation Checks (regex-based, no external dependencies)
+
+1. **Structure check**: starts with `graph TD` or `graph LR`
+2. **Balanced brackets**: count of `(`, `)`, `[`, `]`, `{`, `}` must be even
+3. **Valid node IDs**: all node references match `[A-Za-z][A-Za-z0-9_]*`
+4. **Arrow syntax**: lines with connections use valid patterns (`-->`, `-.->`, `==>`, `-.-`)
+5. **No empty lines between node definitions** (causes Mermaid parse errors)
+6. **classDef syntax**: `classDef <name> <properties>` format
+7. **No unescaped special characters** in labels (quotes, `<`, `>`)
+
+### Retry Prompt
+
+When validation fails, call the LLM again with:
+
+```
+The Mermaid diagram you generated has syntax errors:
+- [specific error description]
+
+Here is your original output:
+```mermaid
+[the invalid code]
+```
+
+Please fix the syntax errors and return ONLY the corrected Mermaid diagram.
+Keep the same content and structure, just fix the syntax.
+```
+
+### Implementation Details
+
+- **Location**: `src/pipeline/graph_generator.py` — add a `_validate_mermaid()` method
+- **Max retries**: 2 correction attempts (total 3 LLM calls max)
+- **Cost impact**: negligible (~$0.02 per retry, retries happen <10% of the time)
+- **Fallback**: if still invalid after retries, return `None` (announcement proceeds without diagram)
+- **Logging**: log validation failures with the specific error for monitoring
+
+### Example Validation Function
+
+```python
+def _validate_mermaid(self, code: str) -> tuple[bool, str]:
+    """Validate Mermaid diagram syntax.
+    
+    Returns (is_valid, error_message).
+    """
+    lines = code.strip().split('\n')
+    
+    # Check starts with graph declaration
+    if not lines[0].strip().startswith(('graph TD', 'graph LR', 'graph TB')):
+        return False, "Must start with 'graph TD' or 'graph LR'"
+    
+    # Check balanced brackets
+    full_text = '\n'.join(lines)
+    for open_char, close_char in [('(', ')'), ('[', ']'), ('{', '}')]:
+        if full_text.count(open_char) != full_text.count(close_char):
+            return False, f"Unbalanced {open_char}{close_char} brackets"
+    
+    # Check for common issues
+    for i, line in enumerate(lines[1:], 2):
+        stripped = line.strip()
+        if not stripped or stripped.startswith('%%') or stripped.startswith('classDef'):
+            continue
+        # Check for invalid arrow syntax (common LLM mistake)
+        if '-->' in stripped or '-.->'' in stripped or '==>' in stripped:
+            continue  # Valid arrow line
+        if ':::' in stripped:
+            continue  # Class assignment
+        if stripped.startswith('style ') or stripped.startswith('linkStyle'):
+            continue  # Style declarations
+        # Node definition or subgraph — should have valid ID
+        # ... additional checks
+    
+    return True, ""
+```
+
+### Client-side Fallback (complementary)
+
+Even with server-side validation, add a CSS fallback for edge cases:
+
+```css
+.mermaid[data-processed="true"] .error {
+  display: none;
+}
+
+.mermaid-fallback {
+  display: none;
+  padding: 1rem;
+  background: var(--aws-light);
+  border-radius: 4px;
+  color: var(--aws-text-secondary);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+/* Show fallback when mermaid fails */
+.mermaid:empty + .mermaid-fallback {
+  display: block;
+}
+```
+
+With HTML:
+```html
+<div class="mermaid">{{MERMAID_CODE}}</div>
+<div class="mermaid-fallback">Visual summary unavailable for this announcement.</div>
+```
