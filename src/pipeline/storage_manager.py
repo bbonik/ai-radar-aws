@@ -31,8 +31,8 @@ ANNOUNCEMENT_CSV_COLUMNS = [
     "mermaid_graph",
     "blogpost_links",
     "first_detected",
-    "card_summary",
     "tags",
+    "card_summary",
 ]
 
 # CSV column headers for the error records file

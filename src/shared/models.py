@@ -133,8 +133,8 @@ class ProcessedAnnouncement:
             "mermaid_graph": self.mermaid_graph if self.mermaid_graph is not None else "",
             "blogpost_links": "|".join(self.blogpost_links),
             "first_detected": self.first_detected,
-            "card_summary": self.report.card_summary,
             "tags": self.tags.serialize(),
+            "card_summary": self.report.card_summary,
         }
 
     @classmethod
