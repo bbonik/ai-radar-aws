@@ -1827,15 +1827,16 @@ JS_TEMPLATE = """\
     var ctx = document.getElementById('timeline-chart');
     if (!ctx) return;
 
-    // If chart exists, update data in-place (more reliable than destroy/recreate)
-    if (timelineChart) {
-      timelineChart.data.labels = labels;
-      timelineChart.data.datasets[0].data = s5;
-      timelineChart.data.datasets[1].data = s4;
-      timelineChart.data.datasets[2].data = s3;
-      timelineChart.data.datasets[3].data = s2;
-      timelineChart.data.datasets[4].data = s1;
-      timelineChart.update();
+    // Get existing chart instance from canvas (Chart.js stores it)
+    var existingChart = Chart.getChart(ctx);
+    if (existingChart) {
+      existingChart.data.labels = labels;
+      existingChart.data.datasets[0].data = s5;
+      existingChart.data.datasets[1].data = s4;
+      existingChart.data.datasets[2].data = s3;
+      existingChart.data.datasets[3].data = s2;
+      existingChart.data.datasets[4].data = s1;
+      existingChart.update();
       return;
     }
 
