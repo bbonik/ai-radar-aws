@@ -1795,10 +1795,8 @@ JS_TEMPLATE = """\
     // Build timeline from VISIBLE cards only (matches what user sees after filtering)
     var dayCounts = {};
     var visibleCards = cardsContainer.querySelectorAll('.announcement-card');
-    var visibleCount = 0;
     visibleCards.forEach(function(card) {
       if (card.style.display === 'none') return;
-      visibleCount++;
       var dateStr = card.getAttribute('data-date') || '';
       var importance = parseInt(card.getAttribute('data-importance'), 10) || 1;
       if (!dateStr) return;
@@ -1807,20 +1805,59 @@ JS_TEMPLATE = """\
     });
 
     var sortedDates = Object.keys(dayCounts).sort();
-    var labels = sortedDates;
-    var s1 = sortedDates.map(function(d) { return dayCounts[d].s1; });
-    var s2 = sortedDates.map(function(d) { return dayCounts[d].s2; });
-    var s3 = sortedDates.map(function(d) { return dayCounts[d].s3; });
-    var s4 = sortedDates.map(function(d) { return dayCounts[d].s4; });
-    var s5 = sortedDates.map(function(d) { return dayCounts[d].s5; });
 
-    // Debug: show what we're rendering
-    var debugEl = document.getElementById('timeline-debug');
-    if (debugEl) {
-      debugEl.textContent = 'Timeline: ' + visibleCount + ' visible cards, ' + sortedDates.length + ' dates [' + sortedDates.join(', ') + ']';
+    // If "All" filter and more than 90 days of data, aggregate by week
+    var labels, s1, s2, s3, s4, s5;
+    if (filters.timePeriod === 'all' && sortedDates.length > 90) {
+      var weekData = aggregateByWeek(dayCounts, sortedDates);
+      labels = weekData.labels;
+      s1 = weekData.s1;
+      s2 = weekData.s2;
+      s3 = weekData.s3;
+      s4 = weekData.s4;
+      s5 = weekData.s5;
+    } else {
+      labels = sortedDates;
+      s1 = sortedDates.map(function(d) { return dayCounts[d].s1; });
+      s2 = sortedDates.map(function(d) { return dayCounts[d].s2; });
+      s3 = sortedDates.map(function(d) { return dayCounts[d].s3; });
+      s4 = sortedDates.map(function(d) { return dayCounts[d].s4; });
+      s5 = sortedDates.map(function(d) { return dayCounts[d].s5; });
     }
 
     renderTimeline(labels, s1, s2, s3, s4, s5);
+  }
+
+  function aggregateByWeek(dayCounts, sortedDates) {
+    // Group dates into ISO weeks (Mon-Sun)
+    var weeks = {};
+    sortedDates.forEach(function(dateStr) {
+      var d = new Date(dateStr + 'T00:00:00Z');
+      // Get Monday of this week
+      var day = d.getUTCDay();
+      var diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+      var monday = new Date(d);
+      monday.setUTCDate(diff);
+      var weekLabel = monday.toISOString().slice(0, 10);
+
+      if (!weeks[weekLabel]) weeks[weekLabel] = {s1:0, s2:0, s3:0, s4:0, s5:0};
+      var dc = dayCounts[dateStr];
+      weeks[weekLabel].s1 += dc.s1;
+      weeks[weekLabel].s2 += dc.s2;
+      weeks[weekLabel].s3 += dc.s3;
+      weeks[weekLabel].s4 += dc.s4;
+      weeks[weekLabel].s5 += dc.s5;
+    });
+
+    var weekLabels = Object.keys(weeks).sort();
+    return {
+      labels: weekLabels.map(function(w) { return 'W/' + w; }),
+      s1: weekLabels.map(function(w) { return weeks[w].s1; }),
+      s2: weekLabels.map(function(w) { return weeks[w].s2; }),
+      s3: weekLabels.map(function(w) { return weeks[w].s3; }),
+      s4: weekLabels.map(function(w) { return weeks[w].s4; }),
+      s5: weekLabels.map(function(w) { return weeks[w].s5; })
+    };
   }
 
   function renderTimeline(labels, s1, s2, s3, s4, s5) {
@@ -2150,7 +2187,6 @@ INDEX_TEMPLATE = """\
       <div class="timeline-chart-container">
         <canvas id="timeline-chart"></canvas>
       </div>
-      <p id="timeline-debug" style="font-size:0.7rem;color:#999;margin-top:0.5rem;"></p>
     </section>
 
     <!-- Announcements Grid -->
