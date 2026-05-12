@@ -147,17 +147,24 @@ class ImportanceClassifier:
         Returns:
             The tag bonus points (0 if no tags or no matching bonuses).
         """
-        if not tags or not tags.types:
+        if not tags:
             return 0.0
 
-        # Apply the highest matching bonus (not cumulative)
         bonus = 0.0
-        if "new-model" in tags.types:
-            bonus = max(bonus, self.config.tag_bonus_new_model)
-        if "new-service" in tags.types:
-            bonus = max(bonus, self.config.tag_bonus_new_service)
-        if "ga-launch" in tags.types:
-            bonus = max(bonus, self.config.tag_bonus_ga_launch)
+
+        # Type-based bonuses (highest wins, not cumulative)
+        if tags.types:
+            if "new-model" in tags.types:
+                bonus = max(bonus, self.config.tag_bonus_new_model)
+            if "new-service" in tags.types:
+                bonus = max(bonus, self.config.tag_bonus_new_service)
+            if "ga-launch" in tags.types:
+                bonus = max(bonus, self.config.tag_bonus_ga_launch)
+
+        # Provider-based bonus (additive — stacks with type bonus)
+        if tags.providers:
+            if "anthropic" in tags.providers or "openai" in tags.providers:
+                bonus += self.config.tag_bonus_key_provider
 
         return bonus
 

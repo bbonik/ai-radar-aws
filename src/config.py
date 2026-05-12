@@ -60,6 +60,7 @@ class Config:
     tag_bonus_new_model: float = 1.0      # Bonus for "new-model" type tag
     tag_bonus_new_service: float = 0.5    # Bonus for "new-service" type tag
     tag_bonus_ga_launch: float = 0.1      # Bonus for "ga-launch" type tag
+    tag_bonus_key_provider: float = 2.0   # Bonus for anthropic or openai provider tags
 
     # Prompt Templates
     report_prompt_template: str = field(default="""\
