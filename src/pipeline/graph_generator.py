@@ -78,6 +78,32 @@ class GraphGenerator:
             return None
 
         mermaid_code = self._extract_mermaid(response_text, item.link)
+
+        if mermaid_code is None:
+            return None
+
+        # Validate the generated diagram
+        is_valid, error_msg = self._validate_mermaid(mermaid_code)
+        if not is_valid:
+            self._logger.warning(
+                "Generated Mermaid diagram has syntax errors, attempting fix",
+                announcement_link=item.link,
+                error=error_msg,
+            )
+            # Retry with fix (max 1 correction attempt)
+            fixed_code = self._retry_with_fix(mermaid_code, error_msg, item.link)
+            if fixed_code:
+                is_valid2, error_msg2 = self._validate_mermaid(fixed_code)
+                if is_valid2:
+                    self._logger.info("Mermaid diagram fixed successfully", announcement_link=item.link)
+                    return fixed_code
+                else:
+                    self._logger.warning("Fix attempt still invalid", announcement_link=item.link, error=error_msg2)
+
+            # Return None if still invalid (graceful degradation)
+            self._logger.error("Mermaid diagram validation failed after retry", announcement_link=item.link)
+            return None
+
         return mermaid_code
 
     def _build_prompt(self, item: RSSItem, report: Report, research_context: ResearchContext | None = None) -> str:
@@ -242,6 +268,55 @@ class GraphGenerator:
             last_error=str(last_error),
         )
         return None
+
+    def _validate_mermaid(self, code: str) -> tuple[bool, str]:
+        """Validate Mermaid diagram syntax.
+
+        Returns (is_valid, error_message).
+        """
+        if not code or not code.strip():
+            return False, "Empty diagram"
+
+        lines = code.strip().split('\n')
+
+        # Check starts with graph declaration
+        first_line = lines[0].strip()
+        if not first_line.startswith(('graph TD', 'graph LR', 'graph TB', 'flowchart')):
+            return False, f"Must start with 'graph TD' or 'graph LR', got: '{first_line}'"
+
+        # Check balanced brackets
+        full_text = code
+        for open_char, close_char, name in [('(', ')', 'parentheses'), ('[', ']', 'square brackets'), ('{', '}', 'curly braces')]:
+            if full_text.count(open_char) != full_text.count(close_char):
+                return False, f"Unbalanced {name}: {full_text.count(open_char)} '{open_char}' vs {full_text.count(close_char)} '{close_char}'"
+
+        # Check for unmatched quotes in labels
+        quote_count = full_text.count('"')
+        if quote_count % 2 != 0:
+            return False, f"Unmatched quotes: {quote_count} double-quote characters (must be even)"
+
+        # Check minimum content (at least a few nodes and connections)
+        arrow_count = full_text.count('-->') + full_text.count('-.->') + full_text.count('==>')
+        if arrow_count < 2:
+            return False, f"Too few connections: found {arrow_count} arrows (need at least 2)"
+
+        return True, ""
+
+    def _retry_with_fix(self, original_code: str, error_message: str, announcement_link: str) -> str | None:
+        """Ask the LLM to fix a syntactically invalid Mermaid diagram."""
+        fix_prompt = (
+            f"The Mermaid diagram you generated has syntax errors:\n"
+            f"- {error_message}\n\n"
+            f"Here is your original output:\n```mermaid\n{original_code}\n```\n\n"
+            f"Please fix the syntax errors and return ONLY the corrected Mermaid diagram "
+            f"inside ```mermaid ... ``` markers. Keep the same content and structure, just fix the syntax."
+        )
+
+        response_text = self._invoke_bedrock(fix_prompt, announcement_link)
+        if response_text is None:
+            return None
+
+        return self._extract_mermaid(response_text, announcement_link)
 
     def _extract_mermaid(self, response_text: str, announcement_link: str) -> str | None:
         """Extract the Mermaid diagram code from the LLM response.

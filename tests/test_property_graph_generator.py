@@ -30,7 +30,7 @@ def _make_generator() -> GraphGenerator:
     return generator
 
 
-def _mock_bedrock_response(mermaid_code: str = "graph TD\n    A-->B") -> MagicMock:
+def _mock_bedrock_response(mermaid_code: str = "graph TD\n    A{{Feature}}:::announced\n    B(Service):::compute\n    C(Storage):::storage\n    A --> B\n    B --> C\n    A -.-> C") -> MagicMock:
     """Create a mock Bedrock response containing a Mermaid diagram."""
     response_body = {
         "content": [

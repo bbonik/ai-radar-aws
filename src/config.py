@@ -114,10 +114,9 @@ Return your response using exactly these section headers:
 """)
 
     graph_prompt_template: str = field(default="""\
-You are an expert AWS solutions architect. Given the following AWS AI/ML announcement, \
-its report, and additional research context from linked documentation and blogposts, \
-produce a Mermaid diagram showing how this service or feature fits \
-into the broader AWS AI/ML/GenAI ecosystem.
+You are an expert AWS solutions architect creating standardized visual summaries. \
+Given the following AWS AI/ML announcement, its report, and research context, \
+produce a Mermaid diagram following the EXACT visual language rules below.
 
 ## Announcement
 Title: {title}
@@ -127,31 +126,67 @@ Service: {aws_service}
 ## Report Summary
 {report_summary}
 
-## Research Context (from linked blogposts and documentation)
+## Research Context
 {research_context}
 
-## Instructions
-Create a Mermaid diagram (using graph TD or graph LR syntax) that shows:
-- The announced service/feature as the central node, highlighted with orange color always
-- Related AWS services it integrates with
-- Data flow or interaction patterns
-- Where it fits in a typical AI/ML workflow
+## Visual Language Rules (MUST follow exactly)
 
-Use the research context to identify specific integrations, data flows, and \
-architectural patterns mentioned in the documentation. This will help produce \
-a more accurate and detailed diagram.
+### Node shapes:
+- The announced feature/service: hexagon syntax `A{{{{{{Label}}}}}}` with class "announced" (EXACTLY ONE per diagram)
+- AWS compute/AI services: rounded rectangle `A(Label)` with class "compute"
+- Storage/data services: rounded rectangle `A(Label)` with class "storage"
+- Features/capabilities: stadium `A([Label])` with class "feature"
+- External systems/users: circle `A((Label))` with class "external"
 
-Keep the diagram focused and readable (5-12 nodes maximum). 
-Use clear, short labels. 
-Utilize color coding (similar attributes/features/services share the same color), arrows, diffierent types of lines etc., to signify relationships in the diagram.
+### Line types:
+- Solid arrow `-->` for data flow / invocation
+- Dashed arrow `-.->` for optional or async relationships
+- Thick arrow `==>` for the primary/critical integration path
+- Arrow labels are encouraged: `A -->|"label"| B`
 
-## Output Format
-Return ONLY the Mermaid diagram code, starting with ```mermaid and ending with ```.
+### Required classDef block (MUST include at the end of every diagram):
+```
+classDef announced fill:#ff9900,stroke:#ec7211,color:#fff,font-weight:bold
+classDef compute fill:#e3f2fd,stroke:#1565c0,color:#1565c0
+classDef storage fill:#e8f5e9,stroke:#2e7d32,color:#2e7d32
+classDef feature fill:#fff3e0,stroke:#e65100,color:#e65100
+classDef external fill:#f5f5f5,stroke:#616161,color:#616161
+```
+
+### Constraints:
+- Always use `graph TD` (top-down layout)
+- 6-10 nodes total (never fewer than 5, never more than 12)
+- Every node MUST have `:::className` applied
+- The announced feature is always the top/central node
+- Use short, clear labels (2-4 words max per node)
+
+## Example Output
 
 ```mermaid
 graph TD
-    ...
+    A{{{{{{Amazon Bedrock AgentCore Payments}}}}}}:::announced
+    B(Amazon Bedrock):::compute
+    C(AWS Lambda):::compute
+    D(Amazon DynamoDB):::storage
+    E([Payment Processing]):::feature
+    F((Merchant App)):::external
+
+    F ==>|"initiates"| A
+    A -->|"orchestrates"| B
+    A -->|"triggers"| C
+    C -->|"stores"| D
+    A -.->|"confirms"| E
+
+    classDef announced fill:#ff9900,stroke:#ec7211,color:#fff,font-weight:bold
+    classDef compute fill:#e3f2fd,stroke:#1565c0,color:#1565c0
+    classDef storage fill:#e8f5e9,stroke:#2e7d32,color:#2e7d32
+    classDef feature fill:#fff3e0,stroke:#e65100,color:#e65100
+    classDef external fill:#f5f5f5,stroke:#616161,color:#616161
 ```
+
+## Output Format
+Return ONLY the Mermaid diagram code, starting with ```mermaid and ending with ```.
+Do NOT include any explanation or text outside the code block.
 """)
 
     tagger_prompt_template: str = field(default="""\
