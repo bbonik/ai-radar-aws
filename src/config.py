@@ -132,7 +132,7 @@ Service: {aws_service}
 ## Visual Language Rules (MUST follow exactly)
 
 ### Node shapes:
-- The announced feature/service: hexagon syntax `A{{{{{{Label}}}}}}` with class "announced" (EXACTLY ONE per diagram)
+- The announced feature/service: hexagon syntax `A{{{{Label}}}}` with class "announced" (EXACTLY ONE per diagram)
 - AWS compute/AI services: rounded rectangle `A(Label)` with class "compute"
 - Storage/data services: rounded rectangle `A(Label)` with class "storage"
 - Features/capabilities: stadium `A([Label])` with class "feature"
@@ -164,7 +164,7 @@ classDef external fill:#f5f5f5,stroke:#616161,color:#616161
 
 ```mermaid
 graph TD
-    A{{{{{{Amazon Bedrock AgentCore Payments}}}}}}:::announced
+    A{{{{Amazon Bedrock AgentCore Payments}}}}:::announced
     B(Amazon Bedrock):::compute
     C(AWS Lambda):::compute
     D(Amazon DynamoDB):::storage
