@@ -656,6 +656,26 @@ body {
   color: var(--aws-orange);
 }
 
+.logo-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.tagline {
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 400;
+  letter-spacing: 0.3px;
+  margin-top: -2px;
+}
+
+.about-tagline {
+  font-size: 0.9rem;
+  color: var(--aws-text-secondary);
+  font-style: italic;
+  margin-bottom: 1.5rem;
+}
+
 .header-nav a {
   color: var(--aws-white);
   text-decoration: none;
@@ -1434,6 +1454,7 @@ JS_TEMPLATE = """\
 
   // Initialize
   buildFilterChips();
+  updateTimeFilterCounts();
   initFilters();
   initTimeline();
   initCardTagClicks();
@@ -1474,6 +1495,40 @@ JS_TEMPLATE = """\
         var row = container.closest('.filter-dimension') || container.closest('.filter-dimension-inner');
         if (row) row.style.display = 'none';
       }
+    });
+  }
+
+  function updateTimeFilterCounts() {
+    var timeRow = document.getElementById('filter-time-row');
+    if (!timeRow) return;
+    var cards = document.querySelectorAll('.announcement-card');
+    var now = new Date();
+    var weekCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    var monthCutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    var threeMonthCutoff = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+    var total = cards.length;
+    var weekCount = 0, monthCount = 0, threeMonthCount = 0;
+
+    cards.forEach(function(card) {
+      var dateStr = card.getAttribute('data-date');
+      if (dateStr) {
+        var d = new Date(dateStr + 'T00:00:00Z');
+        if (d >= weekCutoff) weekCount++;
+        if (d >= monthCutoff) monthCount++;
+        if (d >= threeMonthCutoff) threeMonthCount++;
+      }
+    });
+
+    var buttons = timeRow.querySelectorAll('.filter-chip[data-time]');
+    buttons.forEach(function(btn) {
+      var time = btn.getAttribute('data-time');
+      var count = total;
+      if (time === 'week') count = weekCount;
+      else if (time === 'month') count = monthCount;
+      else if (time === '3months') count = threeMonthCount;
+      var label = btn.textContent.replace(/\s*\(\d+\)/, '');
+      btn.textContent = label + ' (' + count + ')';
     });
   }
 
@@ -2016,7 +2071,10 @@ INDEX_TEMPLATE = """\
     <div class="header-content">
       <a href="index.html" class="site-logo">
         <img src="assets/logo-header.png" alt="AI Radar AWS" class="logo-icon-img">
-        <h1>AI Radar <span>AWS</span></h1>
+        <div class="logo-text">
+          <h1>AI Radar <span>AWS</span></h1>
+          <p class="tagline">AWS AI/ML news &mdash; curated, researched, explained</p>
+        </div>
       </a>
       <nav class="header-nav">
         <a href="#filters">Filters</a>
@@ -2116,6 +2174,7 @@ INDEX_TEMPLATE = """\
       <div class="about-header">
         <img src="assets/logo-about.png" alt="AI Radar AWS" class="about-logo">
         <h2>AI Radar <span>AWS</span></h2>
+        <p class="about-tagline">AWS AI/ML news &mdash; curated, researched, explained</p>
       </div>
       <p>An automated intelligence platform that curates, researches, and analyzes AWS AI/ML/GenAI announcements daily. Every report is backed by real research — the system reads linked blog posts and documentation to provide accurate, in-depth analysis.</p>
 
@@ -2176,7 +2235,10 @@ REPORT_TEMPLATE = """\
     <div class="header-content">
       <a href="../index.html" class="site-logo">
         <img src="../assets/logo-header.png" alt="AI Radar AWS" class="logo-icon-img">
-        <h1>AI Radar <span>AWS</span></h1>
+        <div class="logo-text">
+          <h1>AI Radar <span>AWS</span></h1>
+          <p class="tagline">AWS AI/ML news &mdash; curated, researched, explained</p>
+        </div>
       </a>
       <nav class="header-nav">
         <a href="../index.html">Home</a>
@@ -2249,6 +2311,7 @@ REPORT_TEMPLATE = """\
       <div class="about-header">
         <img src="../assets/logo-about.png" alt="AI Radar AWS" class="about-logo">
         <h2>AI Radar <span>AWS</span></h2>
+        <p class="about-tagline">AWS AI/ML news &mdash; curated, researched, explained</p>
       </div>
       <p>An automated intelligence platform that curates, researches, and analyzes AWS AI/ML/GenAI announcements daily. Every report is backed by real research — the system reads linked blog posts and documentation to provide accurate, in-depth analysis.</p>
 
