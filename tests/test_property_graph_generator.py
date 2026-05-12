@@ -166,3 +166,118 @@ def test_property9_importance_level_gte_3_invokes_llm(
         f"Graph Generator should return a non-empty Mermaid diagram for "
         f"importance_level={importance_level}"
     )
+
+
+# --- Validation and Retry Tests ---
+
+
+@patch("src.pipeline.graph_generator.boto3.client")
+def test_validation_rejects_unbalanced_brackets(mock_boto_client):
+    """Validation catches unbalanced brackets and triggers retry."""
+    config = Config()
+    logger = StructuredLogger(lambda_name="test", run_id="test-run")
+
+    # First call returns invalid diagram (unbalanced parens)
+    invalid_code = "graph TD\n    A(Unclosed\n    B(OK):::compute\n    A --> B\n    A --> B\n    B --> A"
+    # Second call (retry) returns valid diagram
+    valid_code = "graph TD\n    A(Fixed):::announced\n    B(OK):::compute\n    C(Data):::storage\n    A --> B\n    B --> C\n    A -.-> C"
+
+    mock_bedrock = MagicMock()
+    call_count = {"n": 0}
+
+    def side_effect(**kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return _mock_bedrock_response(invalid_code)
+        return _mock_bedrock_response(valid_code)
+
+    mock_bedrock.invoke_model.side_effect = side_effect
+    mock_boto_client.return_value = mock_bedrock
+
+    generator = GraphGenerator(config=config, logger=logger)
+    item = RSSItem(title="Test", description="Test desc", pub_date="2026-01-01", link="https://aws.amazon.com/whats-new/test")
+    report = Report(whats_new="x", how_it_works="x", why_important="x", how_different="x", when_to_prefer="x", availability="x")
+
+    result = generator.generate(item=item, report=report, importance_level=3)
+
+    # Should have retried and returned the fixed version
+    assert call_count["n"] == 2, f"Expected 2 LLM calls (initial + retry), got {call_count['n']}"
+    assert result is not None
+    assert "Fixed" in result
+
+
+@patch("src.pipeline.graph_generator.boto3.client")
+def test_validation_returns_none_after_failed_retry(mock_boto_client):
+    """If both initial and retry produce invalid diagrams, returns None."""
+    config = Config()
+    logger = StructuredLogger(lambda_name="test", run_id="test-run")
+
+    # Both calls return invalid diagram (only 1 arrow)
+    invalid_code = "graph TD\n    A(Node):::compute\n    B(Other):::storage\n    A --> B"
+
+    mock_bedrock = MagicMock()
+    mock_bedrock.invoke_model.return_value = _mock_bedrock_response(invalid_code)
+    mock_boto_client.return_value = mock_bedrock
+
+    generator = GraphGenerator(config=config, logger=logger)
+    item = RSSItem(title="Test", description="Test desc", pub_date="2026-01-01", link="https://aws.amazon.com/whats-new/test")
+    report = Report(whats_new="x", how_it_works="x", why_important="x", how_different="x", when_to_prefer="x", availability="x")
+
+    result = generator.generate(item=item, report=report, importance_level=3)
+
+    # Should return None after failed retry
+    assert result is None
+
+
+@patch("src.pipeline.graph_generator.boto3.client")
+def test_validation_passes_valid_diagram_without_retry(mock_boto_client):
+    """Valid diagram passes validation without triggering retry."""
+    config = Config()
+    logger = StructuredLogger(lambda_name="test", run_id="test-run")
+
+    valid_code = "graph TD\n    A{{Feature}}:::announced\n    B(Service):::compute\n    C(Storage):::storage\n    A --> B\n    B --> C\n    A -.-> C"
+
+    mock_bedrock = MagicMock()
+    mock_bedrock.invoke_model.return_value = _mock_bedrock_response(valid_code)
+    mock_boto_client.return_value = mock_bedrock
+
+    generator = GraphGenerator(config=config, logger=logger)
+    item = RSSItem(title="Test", description="Test desc", pub_date="2026-01-01", link="https://aws.amazon.com/whats-new/test")
+    report = Report(whats_new="x", how_it_works="x", why_important="x", how_different="x", when_to_prefer="x", availability="x")
+
+    result = generator.generate(item=item, report=report, importance_level=3)
+
+    # Should pass without retry (only 1 LLM call)
+    assert mock_bedrock.invoke_model.call_count == 1
+    assert result is not None
+    assert "Feature" in result
+
+
+def test_validate_mermaid_catches_common_errors():
+    """Unit test for _validate_mermaid with various invalid inputs."""
+    generator = _make_generator()
+
+    # Empty
+    valid, err = generator._validate_mermaid("")
+    assert not valid
+    assert "Empty" in err
+
+    # Wrong start
+    valid, err = generator._validate_mermaid("random text\n    A --> B")
+    assert not valid
+    assert "Must start with" in err
+
+    # Unbalanced brackets
+    valid, err = generator._validate_mermaid("graph TD\n    A(Unclosed\n    A --> B\n    B --> A\n    A -.-> B")
+    assert not valid
+    assert "Unbalanced" in err
+
+    # Too few arrows
+    valid, err = generator._validate_mermaid("graph TD\n    A(Node):::compute\n    B(Other):::storage\n    A --> B")
+    assert not valid
+    assert "Too few" in err
+
+    # Valid diagram
+    valid, err = generator._validate_mermaid("graph TD\n    A{{X}}:::announced\n    B(Y):::compute\n    C(Z):::storage\n    A --> B\n    B --> C\n    A -.-> C")
+    assert valid
+    assert err == ""
