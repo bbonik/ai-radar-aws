@@ -1795,8 +1795,10 @@ JS_TEMPLATE = """\
     // Build timeline from VISIBLE cards only (matches what user sees after filtering)
     var dayCounts = {};
     var visibleCards = cardsContainer.querySelectorAll('.announcement-card');
+    var visibleCount = 0;
     visibleCards.forEach(function(card) {
       if (card.style.display === 'none') return;
+      visibleCount++;
       var dateStr = card.getAttribute('data-date') || '';
       var importance = parseInt(card.getAttribute('data-importance'), 10) || 1;
       if (!dateStr) return;
@@ -1811,6 +1813,12 @@ JS_TEMPLATE = """\
     var s3 = sortedDates.map(function(d) { return dayCounts[d].s3; });
     var s4 = sortedDates.map(function(d) { return dayCounts[d].s4; });
     var s5 = sortedDates.map(function(d) { return dayCounts[d].s5; });
+
+    // Debug: show what we're rendering
+    var debugEl = document.getElementById('timeline-debug');
+    if (debugEl) {
+      debugEl.textContent = 'Timeline: ' + visibleCount + ' visible cards, ' + sortedDates.length + ' dates [' + sortedDates.join(', ') + ']';
+    }
 
     renderTimeline(labels, s1, s2, s3, s4, s5);
   }
@@ -2141,6 +2149,7 @@ INDEX_TEMPLATE = """\
       <div class="timeline-chart-container">
         <canvas id="timeline-chart"></canvas>
       </div>
+      <p id="timeline-debug" style="font-size:0.7rem;color:#999;margin-top:0.5rem;"></p>
     </section>
 
     <!-- Announcements Grid -->
