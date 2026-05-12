@@ -1790,38 +1790,29 @@ JS_TEMPLATE = """\
   }
 
   function updateTimeline() {
-    if (!window.Chart || !timelineData.labels) return;
+    if (!window.Chart || !cardsContainer) return;
 
-    try {
-      // Filter timeline data based on current time period
-      var now = new Date();
-      var cutoffDate = null;
-      if (filters.timePeriod === 'week') {
-        cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      } else if (filters.timePeriod === 'month') {
-        cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      } else if (filters.timePeriod === '3months') {
-        cutoffDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-      }
+    // Build timeline from VISIBLE cards only (matches what user sees after filtering)
+    var dayCounts = {};
+    var visibleCards = cardsContainer.querySelectorAll('.announcement-card');
+    visibleCards.forEach(function(card) {
+      if (card.style.display === 'none') return;
+      var dateStr = card.getAttribute('data-date') || '';
+      var importance = parseInt(card.getAttribute('data-importance'), 10) || 1;
+      if (!dateStr) return;
+      if (!dayCounts[dateStr]) dayCounts[dateStr] = {s1:0, s2:0, s3:0, s4:0, s5:0};
+      dayCounts[dateStr]['s' + importance]++;
+    });
 
-      var labels = [], s1 = [], s2 = [], s3 = [], s4 = [], s5 = [];
-      for (var i = 0; i < timelineData.labels.length; i++) {
-        if (cutoffDate) {
-          var d = new Date(timelineData.labels[i] + 'T00:00:00Z');
-          if (d < cutoffDate) continue;
-        }
-        labels.push(timelineData.labels[i]);
-        s1.push(timelineData.star1[i] || 0);
-        s2.push(timelineData.star2[i] || 0);
-        s3.push(timelineData.star3[i] || 0);
-        s4.push(timelineData.star4[i] || 0);
-        s5.push(timelineData.star5[i] || 0);
-      }
+    var sortedDates = Object.keys(dayCounts).sort();
+    var labels = sortedDates;
+    var s1 = sortedDates.map(function(d) { return dayCounts[d].s1; });
+    var s2 = sortedDates.map(function(d) { return dayCounts[d].s2; });
+    var s3 = sortedDates.map(function(d) { return dayCounts[d].s3; });
+    var s4 = sortedDates.map(function(d) { return dayCounts[d].s4; });
+    var s5 = sortedDates.map(function(d) { return dayCounts[d].s5; });
 
-      renderTimeline(labels, s1, s2, s3, s4, s5);
-    } catch (e) {
-      // Silent fallback
-    }
+    renderTimeline(labels, s1, s2, s3, s4, s5);
   }
 
   function renderTimeline(labels, s1, s2, s3, s4, s5) {
