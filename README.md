@@ -162,7 +162,8 @@ The site tracks usage via two mechanisms:
 
 Generate a report:
 ```bash
-python scripts/analytics_report.py --days 30 --output report.csv
+python scripts/analytics_report.py --days 30 --output report.csv  # Save to file
+python scripts/analytics_report.py --days 30                       # Print to stdout (no file created)
 ```
 
 ## Configuration
