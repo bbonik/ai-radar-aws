@@ -81,8 +81,8 @@ class TestResourceCounts:
         assert len(resources) >= 1
 
     def test_cloudwatch_alarms_created(self, template):
-        """Stack should create 5 CloudWatch alarms."""
-        template.resource_count_is("AWS::CloudWatch::Alarm", 5)
+        """Stack should create 6 CloudWatch alarms (5 Lambda + 1 CloudFront)."""
+        template.resource_count_is("AWS::CloudWatch::Alarm", 6)
 
 
 class TestLambdaConfiguration:

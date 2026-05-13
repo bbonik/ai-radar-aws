@@ -22,6 +22,7 @@ from aws_cdk import (
     RemovalPolicy,
     Stack,
     aws_apigatewayv2 as apigwv2,
+    aws_budgets as budgets,
     aws_cloudfront as cloudfront,
     aws_cloudfront_origins as origins,
     aws_cloudwatch as cloudwatch,
@@ -78,6 +79,26 @@ class AiRadarAwsStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
             object_ownership=s3.ObjectOwnership.OBJECT_WRITER,
+            lifecycle_rules=[
+                # P1: Auto-delete analytics events after 90 days
+                s3.LifecycleRule(
+                    id="ExpireAnalyticsEvents",
+                    prefix="events/",
+                    expiration=Duration.days(90),
+                ),
+                # Auto-delete CloudFront logs after 90 days
+                s3.LifecycleRule(
+                    id="ExpireCloudFrontLogs",
+                    prefix="cloudfront/",
+                    expiration=Duration.days(90),
+                ),
+                # Auto-delete Athena query results after 7 days
+                s3.LifecycleRule(
+                    id="ExpireAthenaResults",
+                    prefix="athena-results/",
+                    expiration=Duration.days(7),
+                ),
+            ],
         )
 
         # ─── Bedrock Application Inference Profiles ───────────────────────
@@ -233,7 +254,7 @@ class AiRadarAwsStack(Stack):
                         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
                         "style-src 'self' 'unsafe-inline'; "
                         "img-src 'self' data:; "
-                        "connect-src 'self' https://cdnjs.cloudflare.com https://*.execute-api.us-east-1.amazonaws.com"
+                        "connect-src 'self' https://*.execute-api.us-east-1.amazonaws.com"
                     ),
                     override=True,
                 ),
@@ -444,6 +465,27 @@ class AiRadarAwsStack(Stack):
             alarm_description="Lambda 2 approaching 10-min limit",
         )
 
+        # P2: CloudFront request volume alarm (unusual traffic spike)
+        self.cloudfront_requests_alarm = cloudwatch.Alarm(
+            self,
+            "CloudFrontRequestsAlarm",
+            alarm_name="CloudFront-HighRequestVolume",
+            metric=cloudwatch.Metric(
+                namespace="AWS/CloudFront",
+                metric_name="Requests",
+                dimensions_map={
+                    "DistributionId": self.distribution.distribution_id,
+                    "Region": "Global",
+                },
+                statistic="Sum",
+                period=Duration.hours(1),
+            ),
+            threshold=10000,  # 10K requests per hour is unusual for this site
+            evaluation_periods=1,
+            comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            alarm_description="CloudFront receiving unusually high request volume (possible DDoS)",
+        )
+
         # ─── Analytics Lambda (Event Collector) ────────────────────────────
         self.analytics_lambda = lambda_.Function(
             self,
@@ -484,19 +526,23 @@ class AiRadarAwsStack(Stack):
             name="ai-radar-analytics-api",
             protocol_type="HTTP",
             cors_configuration=apigwv2.CfnApi.CorsProperty(
-                allow_origins=["*"],
+                allow_origins=[f"https://{self.distribution.distribution_domain_name}"],
                 allow_methods=["POST", "OPTIONS"],
                 allow_headers=["Content-Type"],
             ),
         )
 
-        # Auto-deploy stage
+        # Auto-deploy stage with throttling (P1: rate limiting)
         self.analytics_stage = apigwv2.CfnStage(
             self,
             "AnalyticsApiStage",
             api_id=self.analytics_api.ref,
             stage_name="$default",
             auto_deploy=True,
+            default_route_settings=apigwv2.CfnStage.RouteSettingsProperty(
+                throttling_burst_limit=100,
+                throttling_rate_limit=50,
+            ),
         )
 
         # Lambda integration
@@ -532,6 +578,22 @@ class AiRadarAwsStack(Stack):
         self.website_builder_lambda.add_environment(
             "ANALYTICS_API_URL",
             analytics_api_url,
+        )
+
+        # ─── AWS Budget (P2: Cost Anomaly Detection) ──────────────────────
+        # Alert if daily spend exceeds $20 (catches DDoS cost spikes)
+        self.daily_budget = budgets.CfnBudget(
+            self,
+            "DailySpendBudget",
+            budget=budgets.CfnBudget.BudgetDataProperty(
+                budget_name="AiRadar-DailySpend",
+                budget_type="COST",
+                time_unit="DAILY",
+                budget_limit=budgets.CfnBudget.SpendProperty(
+                    amount=20,
+                    unit="USD",
+                ),
+            ),
         )
 
         # ─── Stack Outputs ────────────────────────────────────────────────
