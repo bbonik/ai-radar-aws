@@ -5,23 +5,39 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the AWS "What's New" R
 ## Architecture
 
 ```
-┌──────────────┐     ┌─────────────────────────────────────────────────────┐
-│  EventBridge │────▶│  Lambda 1: Report Generation Pipeline (15 min)      │
-│  (Daily)     │     │  RSS → Dedup → Filter → Tag (Haiku) → Classify →   │
-└──────────────┘     │  Research → Report (Sonnet) → Graph (Opus) →        │
-                     │  Store CSV to S3                                     │
+                                    ┌─────────────────────────────────────┐
+                                    │         Amazon Bedrock              │
+                                    │  Sonnet 4.6 │ Opus 4.6 │ Haiku 4.5  │
+                                    └──────────────────┬──────────────────┘
+                                                       │
+┌──────────────┐     ┌─────────────────────────────────┼───────────────────┐
+│  EventBridge │────▶│  Lambda 1: Report Pipeline      │                   │
+│  (Daily)     │     │  RSS → Dedup → Filter → Tag ────┘                   │
+└──────────────┘     │  → Classify → Research → Report → Graph → Store     │
                      └──────────────────────────┬──────────────────────────┘
                                                 │ async invoke
-                     ┌──────────────────────────▼──────────────────────────┐
-                     │  Lambda 2: Website Builder (10 min)                  │
-                     │  Read CSV → Generate HTML/CSS/JS → Upload S3 →      │
-                     │  Invalidate CloudFront                               │
-                     └─────────────────────────────────────────────────────┘
-
-                     ┌─────────────────────────────────────────────────────┐
-                     │  Lambda 3: Analytics Collector                       │
-                     │  API Gateway POST /events → S3 JSONL                │
-                     └─────────────────────────────────────────────────────┘
+                     ┌──────────────────────────▼────────────────────────────┐
+                     │  Lambda 2: Website Builder                            │
+                     │  Read CSV → Generate HTML/CSS/JS → Upload → Invalidate│
+                     └───────┬──────────────────────────────────┬────────────┘
+                             │                                  │
+                     ┌───────▼───────┐                  ┌───────▼───────┐
+                     │  S3 (Data)    │                  │  S3 (Website) │
+                     │  CSV storage  │                  │  Static files │
+                     └───────────────┘                  └───────┬───────┘
+                                                                │
+                                                        ┌───────▼───────┐
+                                              ┌────────▶│  CloudFront   │◀──── Users
+                                              │         │  + WAF        │
+                                              │         └───────────────┘
+                                              │
+┌─────────────────────────────────────────────┼────────────────────────────┐
+│  Analytics                                  │                            │
+│  ┌────────────┐    ┌──────────┐    ┌────────▼───────┐                    │
+│  │ Browser JS │───▶│ API GW   │───▶│ Lambda 3       │──▶ S3 (Logs)       │
+│  │ (tracking) │    │ POST     │    │ Event Collector│   + CF Access Logs │
+│  └────────────┘    └──────────┘    └────────────────┘                    │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Key services:** Python 3.11, Amazon Bedrock (Claude Sonnet 4.6 + Opus 4.6 + Haiku 4.5), CDK, S3, CloudFront, WAF, EventBridge, API Gateway
