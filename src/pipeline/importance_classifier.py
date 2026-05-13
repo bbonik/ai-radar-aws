@@ -2,7 +2,8 @@
 
 Computes a point-based importance score for each announcement by
 combining service tier points, blogpost link presence, word count,
-and tag-based bonuses (when taxonomy tags are available).
+tag-based bonuses (when taxonomy tags are available), and geographic
+preference for region-expansion announcements.
 Maps the raw score to a star level (1–5) using configurable thresholds.
 """
 
@@ -11,6 +12,61 @@ import re
 from src.config import Config
 from src.shared.logger import StructuredLogger
 from src.shared.models import AnnouncementTags, RSSItem
+
+
+# ─── Geography Groups ─────────────────────────────────────────────────────────
+# Keywords (all lowercase) that identify which geography a region expansion
+# belongs to. Includes region codes, city names, and common variations.
+# Source: AWS official region list as of May 2026.
+
+GEOGRAPHY_KEYWORDS: dict[str, list[str]] = {
+    "apj": [
+        # Region codes
+        "ap-east-1", "ap-east-2", "ap-northeast-1", "ap-northeast-2",
+        "ap-northeast-3", "ap-south-1", "ap-south-2", "ap-southeast-1",
+        "ap-southeast-2", "ap-southeast-3", "ap-southeast-4",
+        "ap-southeast-5", "ap-southeast-6", "ap-southeast-7",
+        # City/country names
+        "hong kong", "taipei", "tokyo", "seoul", "osaka", "mumbai",
+        "hyderabad", "singapore", "sydney", "jakarta", "melbourne",
+        "malaysia", "new zealand", "thailand", "bangkok", "kuala lumpur",
+        "auckland",
+        # Common AWS phrasing
+        "asia pacific", "asia-pacific",
+    ],
+    "emea": [
+        # Region codes
+        "eu-central-1", "eu-central-2", "eu-north-1", "eu-south-1",
+        "eu-south-2", "eu-west-1", "eu-west-2", "eu-west-3",
+        "eusc-de-east-1", "il-central-1", "me-central-1", "me-south-1",
+        "af-south-1",
+        # City/country names
+        "frankfurt", "zurich", "stockholm", "milan", "spain", "ireland",
+        "london", "paris", "germany", "tel aviv", "israel", "uae",
+        "bahrain", "cape town", "south africa",
+        # Common AWS phrasing
+        "europe", "middle east", "africa",
+        # Sovereign cloud
+        "european sovereign",
+    ],
+    "americas": [
+        # Region codes
+        "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+        "ca-central-1", "ca-west-1", "sa-east-1", "mx-central-1",
+        # City/country/state names
+        "virginia", "n. virginia", "ohio", "oregon", "california",
+        "n. california", "canada", "calgary", "sao paulo", "são paulo",
+        "mexico",
+        # Common AWS phrasing
+        "us east", "us west", "south america",
+    ],
+    "gov": [
+        # Region codes
+        "us-gov-east-1", "us-gov-west-1",
+        # Common phrasing
+        "govcloud", "gov cloud", "us-gov",
+    ],
+}
 
 
 class ImportanceClassifier:
@@ -91,7 +147,8 @@ class ImportanceClassifier:
     def compute_score(self, item: RSSItem, tags: AnnouncementTags | None = None) -> float:
         """Compute the raw importance score for an item.
 
-        Score = service_tier_points + blogpost_points + word_count_contribution + tag_bonus
+        Score = service_tier_points + blogpost_points + word_count_contribution
+                + tag_bonus + region_geography_modifier
 
         Args:
             item: The RSS item to score.
@@ -114,7 +171,9 @@ class ImportanceClassifier:
 
         tag_bonus = self._compute_tag_bonus(tags)
 
-        return service_points + blogpost_points + word_count_contribution + tag_bonus
+        region_modifier = self._compute_region_geography_modifier(item, tags)
+
+        return service_points + blogpost_points + word_count_contribution + tag_bonus + region_modifier
 
     def _get_service_points_from_tags(self, tags: AnnouncementTags | None) -> int | None:
         """Get service tier points from taxonomy tags.
@@ -167,6 +226,58 @@ class ImportanceClassifier:
                 bonus += self.config.tag_bonus_key_provider
 
         return bonus
+
+    def _compute_region_geography_modifier(
+        self, item: RSSItem, tags: AnnouncementTags | None
+    ) -> float:
+        """Compute a score modifier for region-expansion announcements based on geography.
+
+        Only applies when the announcement has a "region-expansion" type tag.
+        Scans the title and description (case-insensitive) for geography keywords.
+
+        Logic:
+        - If preferred_geography is "global" → no modifier (0.0)
+        - If region-expansion AND mentions preferred geography → bonus
+        - If region-expansion AND mentions ONLY other geographies → penalty
+        - If region-expansion AND no specific regions detected → neutral (0.0)
+        - If NOT region-expansion → no modifier (0.0)
+
+        Args:
+            item: The RSS item to check.
+            tags: Taxonomy tags (checked for "region-expansion" type).
+
+        Returns:
+            The geographic modifier (positive bonus, negative penalty, or 0).
+        """
+        # Only applies to region-expansion announcements
+        if not tags or "region-expansion" not in tags.types:
+            return 0.0
+
+        # If user has no geographic preference, skip
+        preferred = self.config.preferred_geography.lower()
+        if preferred == "global":
+            return 0.0
+
+        # Scan text for geography keywords (case-insensitive)
+        text = (item.title + " " + item.description).lower()
+
+        # Determine which geographies are mentioned
+        mentioned_geographies: set[str] = set()
+        for geography, keywords in GEOGRAPHY_KEYWORDS.items():
+            for keyword in keywords:
+                if keyword in text:
+                    mentioned_geographies.add(geography)
+                    break  # One match per geography is enough
+
+        # No specific regions detected → neutral
+        if not mentioned_geographies:
+            return 0.0
+
+        # Check if preferred geography is mentioned
+        if preferred in mentioned_geographies:
+            return self.config.region_expansion_bonus_local
+        else:
+            return self.config.region_expansion_penalty_remote
 
     def _extract_service(self, item: RSSItem) -> str:
         """Extract the AWS service name from the item title or description.

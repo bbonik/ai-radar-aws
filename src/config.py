@@ -62,6 +62,12 @@ class Config:
     tag_bonus_ga_launch: float = 0.1      # Bonus for "ga-launch" type tag
     tag_bonus_key_provider: float = 2.0   # Bonus for anthropic or openai provider tags
 
+    # Geographic preference for region-expansion scoring
+    # Set to your geography: "apj", "emea", "americas", or "global" (no bias)
+    preferred_geography: str = "apj"
+    region_expansion_bonus_local: float = 1.0     # Bonus when expansion includes your geography
+    region_expansion_penalty_remote: float = -1.5  # Penalty when expansion is ONLY in other geographies
+
     # Prompt Templates
     report_prompt_template: str = field(default="""\
 You are an expert AWS AI/ML analyst. Given the following AWS announcement and \
