@@ -169,6 +169,9 @@ class PipelineOrchestrator:
             # Stage 5: Classify importance (uses tags for bonus scoring)
             star_level, score = self._importance_classifier.classify(item, tags)
 
+            # Stage 5b: Compute geographic relevance for card badge
+            geo_relevance = self._importance_classifier.compute_geo_relevance(item, tags)
+
             # Stage 6: Research
             research_context = self._research_agent.research(item)
             if research_context.skipped:
@@ -196,6 +199,7 @@ class PipelineOrchestrator:
                     timespec="milliseconds"
                 ).replace("+00:00", "Z"),
                 tags=tags,
+                geo_relevance=geo_relevance,
             )
 
             saved = self._storage_manager.save_announcement(processed)

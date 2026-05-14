@@ -68,6 +68,19 @@ GEOGRAPHY_KEYWORDS: dict[str, list[str]] = {
     ],
 }
 
+# Keywords that indicate "all regions" / global availability
+GLOBAL_AVAILABILITY_KEYWORDS: list[str] = [
+    "all aws regions",
+    "all supported regions",
+    "all regions where",
+    "all commercial regions",
+    "globally available",
+    "available globally",
+    "worldwide",
+    "all existing regions",
+    "every region",
+]
+
 
 class ImportanceClassifier:
     """Classifies announcements by importance using a point-based scoring system.
@@ -143,6 +156,33 @@ class ImportanceClassifier:
         )
 
         return (star_level, score)
+
+    def compute_geo_relevance(self, item: RSSItem, tags: AnnouncementTags | None = None) -> str:
+        """Determine geographic relevance of an announcement.
+
+        Returns:
+            "local" — explicitly mentions the user's preferred geography
+            "global" — says "all regions" / "globally available" (includes user)
+            "" — not relevant to user's geography or not a region-related announcement
+        """
+        preferred = self.config.preferred_geography.lower()
+        if preferred == "global":
+            return ""  # No preference → no badge needed
+
+        text = (item.title + " " + item.description).lower()
+
+        # Check for "all regions" / global availability keywords
+        for keyword in GLOBAL_AVAILABILITY_KEYWORDS:
+            if keyword in text:
+                return "global"
+
+        # Check if preferred geography is explicitly mentioned
+        if preferred in GEOGRAPHY_KEYWORDS:
+            for keyword in GEOGRAPHY_KEYWORDS[preferred]:
+                if keyword in text:
+                    return "local"
+
+        return ""
 
     def compute_score(self, item: RSSItem, tags: AnnouncementTags | None = None) -> float:
         """Compute the raw importance score for an item.

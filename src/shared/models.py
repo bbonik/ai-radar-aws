@@ -113,6 +113,7 @@ class ProcessedAnnouncement:
     blogpost_links: list[str]
     first_detected: str  # ISO timestamp
     tags: AnnouncementTags = field(default_factory=AnnouncementTags)
+    geo_relevance: str = ""  # "local", "global", or "" (not relevant/unknown)
 
     def to_csv_row(self) -> dict:
         """Serialize to a flat dict matching the CSV schema columns."""
@@ -135,6 +136,7 @@ class ProcessedAnnouncement:
             "first_detected": self.first_detected,
             "tags": self.tags.serialize(),
             "card_summary": self.report.card_summary,
+            "geo_relevance": self.geo_relevance,
         }
 
     @classmethod
@@ -172,6 +174,7 @@ class ProcessedAnnouncement:
             blogpost_links=blogpost_links,
             first_detected=row["first_detected"],
             tags=tags,
+            geo_relevance=row.get("geo_relevance", ""),
         )
 
 

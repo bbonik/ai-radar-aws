@@ -199,3 +199,73 @@ class TestGeographyKeywordsCoverage:
         ]
         for region in americas_regions:
             assert region in GEOGRAPHY_KEYWORDS["americas"], f"{region} missing from Americas"
+
+
+
+class TestComputeGeoRelevance:
+    """Tests for the public compute_geo_relevance method."""
+
+    def test_local_when_apj_mentioned(self, classifier):
+        """Should return 'local' when APJ region is mentioned."""
+        item = _make_item(
+            "Amazon Bedrock now available in Asia Pacific (Tokyo)",
+            "Customers in ap-northeast-1 can now use Bedrock.",
+        )
+        assert classifier.compute_geo_relevance(item) == "local"
+
+    def test_global_when_all_regions(self, classifier):
+        """Should return 'global' when 'all regions' is mentioned."""
+        item = _make_item(
+            "Amazon Bedrock feature available in all AWS Regions",
+            "This feature is now available in all AWS Regions where Bedrock is supported.",
+        )
+        assert classifier.compute_geo_relevance(item) == "global"
+
+    def test_global_when_globally_available(self, classifier):
+        """Should return 'global' for 'globally available' phrasing."""
+        item = _make_item(
+            "New feature globally available",
+            "This feature is now globally available.",
+        )
+        assert classifier.compute_geo_relevance(item) == "global"
+
+    def test_empty_when_only_emea(self, classifier):
+        """Should return '' when only EMEA regions mentioned (not relevant to APJ)."""
+        item = _make_item(
+            "Service now available in Europe (Frankfurt)",
+            "Available in eu-central-1.",
+        )
+        assert classifier.compute_geo_relevance(item) == ""
+
+    def test_empty_when_no_region_info(self, classifier):
+        """Should return '' when no region information is present."""
+        item = _make_item(
+            "Amazon Bedrock adds new model support",
+            "A new foundation model is now available.",
+        )
+        assert classifier.compute_geo_relevance(item) == ""
+
+    def test_empty_when_global_preference(self, classifier):
+        """Should return '' when preferred_geography is 'global'."""
+        classifier.config.preferred_geography = "global"
+        item = _make_item(
+            "Service available in Tokyo",
+            "Now in ap-northeast-1.",
+        )
+        assert classifier.compute_geo_relevance(item) == ""
+
+    def test_local_with_singapore(self, classifier):
+        """Singapore mention should return 'local' for APJ user."""
+        item = _make_item(
+            "Service expands to Singapore",
+            "Now available in the Singapore region.",
+        )
+        assert classifier.compute_geo_relevance(item) == "local"
+
+    def test_global_takes_priority_over_local(self, classifier):
+        """'All regions' should return 'global' even if APJ is also mentioned."""
+        item = _make_item(
+            "Feature available in all supported regions including Tokyo",
+            "Now available in all supported regions.",
+        )
+        assert classifier.compute_geo_relevance(item) == "global"

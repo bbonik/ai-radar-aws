@@ -443,6 +443,13 @@ class WebsiteBuilder:
         all_tags = a.tags.all_tags()
         all_tags_attr = _sanitize_html(",".join(all_tags)) if all_tags else ""
 
+        # Geo relevance badge (bottom-right corner)
+        geo_badge_html = ""
+        if a.geo_relevance == "local":
+            geo_badge_html = '    <span class="geo-badge geo-local">\U0001f30f APJ</span>\n'
+        elif a.geo_relevance == "global":
+            geo_badge_html = '    <span class="geo-badge geo-global">\U0001f310 Global</span>\n'
+
         return (
             f'<article class="announcement-card" '
             f'data-date="{date_attr_safe}" '
@@ -455,7 +462,10 @@ class WebsiteBuilder:
             f'  <h3 class="card-title"><a href="reports/{slug}.html">{title_safe}</a></h3>\n'
             f'{tags_html}'
             f'  <p class="card-summary">{summary_safe}</p>\n'
-            f'  <a href="reports/{slug}.html" class="card-link">Read full report &rarr;</a>\n'
+            f'  <div class="card-footer">\n'
+            f'    <a href="reports/{slug}.html" class="card-link">Read full report &rarr;</a>\n'
+            f'{geo_badge_html}'
+            f'  </div>\n'
             f'</article>'
         )
 
@@ -997,6 +1007,35 @@ body {
 
 .card-link:hover {
   color: var(--aws-orange);
+}
+
+/* Card Footer (link + geo badge) */
+.card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.75rem;
+}
+
+/* Geo Relevance Badge */
+.geo-badge {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.geo-local {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #a5d6a7;
+}
+
+.geo-global {
+  background: #e3f2fd;
+  color: #1565c0;
+  border: 1px solid #90caf9;
 }
 
 /* Tag Chips */
