@@ -921,6 +921,8 @@ body {
   box-shadow: var(--shadow);
   transition: var(--transition);
   border-left: 4px solid var(--aws-border);
+  display: flex;
+  flex-direction: column;
 }
 
 .announcement-card:hover {
@@ -1014,7 +1016,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 0.75rem;
+  margin-top: auto;
+  padding-top: 0.75rem;
 }
 
 /* Geo Relevance Badge */
