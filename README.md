@@ -73,6 +73,7 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the AWS "What's New" R
 │   ├── analytics_report.py        # Generate analytics CSV report via Athena
 │   ├── retag_announcements.py     # Retroactively tag existing announcements
 │   ├── reclassify_announcements.py # Recompute importance scores
+│   ├── compute_geo_relevance.py   # Backfill geographic relevance badges
 │   ├── generate_card_summaries.py # Backfill card summaries for existing data
 │   ├── generate_missing_graphs.py # Backfill visual summaries for 2+ star items
 │   └── test_local.py             # Local pipeline testing with mocked AWS
@@ -80,7 +81,8 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the AWS "What's New" R
 ├── docs/                            # Design documents and analysis
 │   ├── taxonomy-analysis.md       # Multi-dimensional tagging taxonomy design
 │   ├── scalability-analysis.md    # Growth projections and migration options
-│   └── analytics-analysis.md     # Website analytics implementation options
+│   ├── analytics-analysis.md     # Website analytics implementation options
+│   └── security-analysis.md      # Cybersecurity threat model and mitigations
 ├── deploy.sh                        # One-command full deployment
 ├── rebuild-site.sh                  # Quick redeploy + website rebuild
 ├── CHANGELOG.md                     # Issue tracking and feature log
@@ -125,6 +127,7 @@ That's it. Two commands from zero to a running website.
 | `python scripts/generate_card_summaries.py` | Generate card summaries | After adding summary feature |
 | `python scripts/generate_missing_graphs.py` | Backfill visual summaries | After lowering graph threshold |
 | `python scripts/regenerate_all_graphs.py` | Clear + regenerate ALL visual summaries | After changing graph style/prompt |
+| `python scripts/compute_geo_relevance.py` | Compute geographic relevance badges | After changing preferred geography |
 | `python scripts/analytics_report.py --days 30` | Generate analytics CSV | Check website usage metrics |
 
 ## How It Works
@@ -134,7 +137,8 @@ That's it. Two commands from zero to a running website.
 3. **Deduplication** skips previously processed announcements (by link)
 4. **Relevance Filter** applies regex patterns for AI/ML/GenAI keywords
 5. **Taxonomy Tagger** (Haiku 4.5) assigns multi-dimensional tags across 5 dimensions
-6. **Importance Classifier** computes a point score → 1-5 stars (uses tags for bonus scoring)
+6. **Importance Classifier** computes a point score → 1-5 stars (uses tags + geographic preference for scoring)
+7. **Geographic Relevance** detects whether the announcement is relevant to the user's geography (APJ by default)
 7. **Research Agent** follows blogpost/doc links for additional context
 8. **Report Generator** (Sonnet 4.6) produces structured 6-section reports + card summary
 9. **Graph Generator** (Opus 4.6) creates Mermaid visual summaries (2-5 star only)
@@ -148,6 +152,7 @@ That's it. Two commands from zero to a running website.
 - **Time filtering** — All / Last Week / Last Month / Last 3 Months
 - **Sort** — Newest first or Most important first
 - **Taxonomy tags** — 5 dimensions: Services, Type, Concepts, Use Cases, Providers
+- **Geographic relevance badges** — 🌏 APJ (confirmed in your region) or 🌐 Global (available everywhere)
 - **Report pages** — 6 structured sections with bullet points + Mermaid visual summaries
 - **PDF export** — Client-side PDF generation via html2pdf.js
 - **Timeline chart** — Stacked bar chart showing announcement volume over time (auto-aggregates to weekly when >90 days)
@@ -172,6 +177,7 @@ All tunable parameters live in `src/config.py`:
 - AWS region and schedule (daily at 22:00 UTC)
 - LLM model IDs: Sonnet 4.6 (reports), Opus 4.6 (graphs), Haiku 4.5 (tagging)
 - Importance scoring weights and thresholds
+- Geographic preference (`preferred_geography`: apj, emea, americas, or global)
 - Prompt templates (report, graph, tagger)
 - Timeouts and retry settings
 
