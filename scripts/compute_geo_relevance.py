@@ -54,9 +54,23 @@ def main():
     data_bucket = os.environ.get("DATA_BUCKET_NAME", "")
     if not data_bucket:
         cfn = boto3.client("cloudformation")
+        try:
+            response = cfn.describe_stacks(StackName="AiRadarAwsStack")
+            outputs = {
+                o["OutputKey"]: o["OutputValue"]
+                for o in response["Stacks"][0].get("Outputs", [])
+            }
+            data_bucket = outputs.get("DataBucketName", "")
+        except Exception:
+            pass
+
+    # Fallback: look up the S3 bucket resource directly
+    if not data_bucket:
+        cfn = boto3.client("cloudformation")
         resources = cfn.list_stack_resources(StackName="AiRadarAwsStack")
         for r in resources.get("StackResourceSummaries", []):
-            if "DataBucket" in r["LogicalResourceId"]:
+            if (r["LogicalResourceId"].startswith("DataBucket")
+                    and r["ResourceType"] == "AWS::S3::Bucket"):
                 data_bucket = r["PhysicalResourceId"]
                 break
 
