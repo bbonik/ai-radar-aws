@@ -120,9 +120,8 @@ That's it. Two commands from zero to a running website.
 | `./deploy.sh --destroy` | Tear down the entire stack | Remove all resources |
 | `./rebuild-site.sh` | Deploy code + rebuild website | After code changes |
 | `./rebuild-site.sh --skip-cdk` | Just rebuild website (no CDK) | After data-only changes |
-| `./rebuild-site.sh --pipeline` | Run full pipeline + rebuild | Fetch new news manually |
 | `./run-pipeline.sh` | Trigger pipeline with live progress | See real-time processing status |
-| `./run-pipeline.sh --watch` | Watch an already-running pipeline | Monitor ongoing pipeline run |
+| `./rebuild-site.sh --pipeline` | Run full pipeline + rebuild | Fetch new news manually |
 | `python scripts/retag_announcements.py` | Tag existing announcements | After taxonomy changes |
 | `python scripts/retag_announcements.py --force` | Re-tag ALL announcements | When taxonomy tags are updated |
 | `python scripts/reclassify_announcements.py` | Recompute importance scores | After scoring changes |
@@ -131,6 +130,23 @@ That's it. Two commands from zero to a running website.
 | `python scripts/regenerate_all_graphs.py` | Clear + regenerate ALL visual summaries | After changing graph style/prompt |
 | `python scripts/compute_geo_relevance.py` | Compute geographic relevance badges | After changing preferred geography |
 | `python scripts/analytics_report.py --days 30` | Generate analytics CSV | Check website usage metrics |
+
+### Running the Pipeline Manually
+
+The pipeline runs automatically daily at 22:00 UTC. To trigger it manually with progress reporting:
+
+```bash
+./run-pipeline.sh
+```
+
+This invokes the pipeline synchronously and shows:
+- How many RSS items were fetched and deduplicated
+- How many are relevant AI/ML announcements
+- Per-announcement progress with title and star rating
+- Errors (if any)
+- Final summary with duration and success/failure counts
+
+The website is automatically rebuilt when the pipeline finishes. Hard-refresh (Cmd+Shift+R) after ~1-2 minutes to see new announcements.
 
 ## How It Works
 
