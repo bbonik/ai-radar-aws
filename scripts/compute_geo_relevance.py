@@ -31,48 +31,43 @@ APJ_AVAILABLE_SERVICES = ImportanceClassifier.APJ_AVAILABLE_SERVICES
 
 
 def compute_geo_relevance_for_row(row: dict, preferred: str) -> str:
-    """Compute geo_relevance from announcement CSV row (text + tags).
+    """Compute geo_relevance combining LLM tagger output + keyword detection.
 
-    Primary: uses LLM tagger's geo_availability from tags JSON.
-    Fallback: keyword-based detection if geo_availability is missing/unknown.
-
-    Logic:
-    1. Check tagger's geo_availability field
-    2. If empty/unknown, fall back to keyword-based detection
+    Strategy:
+    - Keyword detection for preferred geography (APJ) is authoritative
+    - For "global": trust tagger or keyword "all regions" phrases
+    - For non-APJ specific regions: return empty
     """
     if preferred == "global":
         return ""
 
-    # Primary: use tagger's geo_availability from tags
-    tags_raw = row.get("tags", "")
-    if tags_raw:
-        tags = AnnouncementTags.deserialize(tags_raw)
-        if tags.geo_availability and tags.geo_availability != "unknown":
-            geo = tags.geo_availability
-            if geo == preferred:
-                return "local"
-            elif geo == "global":
-                return "global"
-            else:
-                return ""  # Specific non-preferred geography
-
-    # Fallback: keyword-based detection
     title = row.get("title", "")
     description = row.get("description", "")
     text = (title + " " + description).lower()
 
-    # Step 1: Check for global availability keywords
-    for keyword in GLOBAL_AVAILABILITY_KEYWORDS:
-        if keyword in text:
-            return "global"
-
-    # Step 2: Check if preferred geography is mentioned
+    # Step 1: Keyword check for preferred geography is AUTHORITATIVE
     if preferred in GEOGRAPHY_KEYWORDS:
         for keyword in GEOGRAPHY_KEYWORDS[preferred]:
             if keyword in text:
                 return "local"
 
-    # Step 3: Check if any non-preferred geography is mentioned
+    # Step 2: Check for explicit "all regions" keywords
+    for keyword in GLOBAL_AVAILABILITY_KEYWORDS:
+        if keyword in text:
+            return "global"
+
+    # Step 3: Use tagger's geo_availability
+    tags_raw = row.get("tags", "")
+    if tags_raw:
+        tags = AnnouncementTags.deserialize(tags_raw)
+        if tags.geo_availability == "global":
+            return "global"
+        elif tags.geo_availability == preferred:
+            return "local"  # Shouldn't reach here (keyword would have caught it)
+        elif tags.geo_availability in ("emea", "americas"):
+            return ""  # Region-specific elsewhere
+
+    # Step 4: Fallback — check for non-preferred regions
     any_region_mentioned = False
     for geography, keywords in GEOGRAPHY_KEYWORDS.items():
         if geography == preferred:
@@ -85,9 +80,9 @@ def compute_geo_relevance_for_row(row: dict, preferred: str) -> str:
             break
 
     if any_region_mentioned:
-        return ""  # Region-specific to somewhere else
+        return ""
 
-    # Step 4: No regions detected — infer global for GA/new-feature on APJ service
+    # Step 5: No regions at all — infer global for GA/new-feature on APJ service
     if tags_raw:
         tags = AnnouncementTags.deserialize(tags_raw)
         if ("ga-launch" in tags.types or "new-feature" in tags.types):

@@ -25,6 +25,7 @@ from src.shared.models import (
 )
 from src.pipeline.graph_generator import GraphGenerator
 from src.pipeline.importance_classifier import ImportanceClassifier
+from src.pipeline.importance_classifier import GEOGRAPHY_KEYWORDS, GLOBAL_AVAILABILITY_KEYWORDS
 from src.pipeline.relevance_filter import RelevanceFilter
 from src.pipeline.report_generator import ReportGenerator, ReportGenerationError
 from src.pipeline.research_agent import ResearchAgent
@@ -311,32 +312,40 @@ class PipelineOrchestrator:
         return self._importance_classifier._extract_service(item)
 
     def _resolve_geo_relevance(self, item: RSSItem, tags) -> str:
-        """Resolve geographic relevance from tagger output with keyword fallback.
+        """Resolve geographic relevance combining LLM tagger + keyword detection.
 
-        Maps tagger's geo_availability to the geo_relevance badge values:
-        - "apj" → "local" (user's preferred geography)
-        - "global" → "global"
-        - "emea", "americas", "unknown", "" → "" (not relevant or unknown)
-
-        Falls back to keyword-based detection if tagger returns empty/unknown.
+        Strategy:
+        - Keyword detection for preferred geography (APJ) is authoritative — if
+          APJ keywords are found in the text, always return "local" regardless
+          of what the tagger said (LLM unreliable for multi-region priority).
+        - For "global" and non-APJ: trust the tagger as primary, keyword as fallback.
         """
         preferred = self._config.preferred_geography.lower()
 
-        # Primary: use LLM tagger's geo_availability
+        # Keyword check for preferred geography is authoritative
+        text = (item.title + " " + item.description).lower()
+        if preferred in GEOGRAPHY_KEYWORDS:
+            for keyword in GEOGRAPHY_KEYWORDS[preferred]:
+                if keyword in text:
+                    return "local"
+
+        # Check for explicit "all regions" keywords
+        for keyword in GLOBAL_AVAILABILITY_KEYWORDS:
+            if keyword in text:
+                return "global"
+
+        # Use tagger's geo_availability for non-APJ cases
         if tags and tags.geo_availability:
             geo = tags.geo_availability
-            if geo == preferred:
-                return "local"
-            elif geo == "global":
+            if geo == "global":
                 return "global"
-            elif geo == "unknown":
-                # Fall through to keyword-based fallback
-                pass
-            else:
-                # Specific non-preferred geography (emea, americas, etc.)
+            elif geo == preferred:
+                return "local"  # Shouldn't reach here (keyword would have caught it)
+            elif geo in ("emea", "americas", "unknown"):
+                # Check if any non-preferred region is mentioned (confirms it's region-specific)
                 return ""
 
-        # Fallback: keyword-based detection
+        # Fallback: keyword-based detection for remaining cases
         return self._importance_classifier.compute_geo_relevance(item, tags)
 
     def _extract_blogpost_links(self, item: RSSItem) -> list[str]:
