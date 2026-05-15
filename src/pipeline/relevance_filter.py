@@ -168,6 +168,7 @@ class RelevanceFilter:
             r"\bagentcore\b",
             r"\bagent core\b",
             r"\bkiro\b",
+            r"\baws transform\b",
 
             # AI-related capabilities
             r"\bcomputer vision\b",

@@ -209,7 +209,7 @@ Description: {description}
 ### Dimension 1: AWS Service (services)
 Valid tags: bedrock, bedrock-agentcore, sagemaker, sagemaker-ai, sagemaker-jumpstart, \
 sagemaker-hyperpod, sagemaker-unified-studio, quicksight, quick, quick-suite, kiro, \
-q-developer, q-business, comprehend, rekognition, textract, transcribe, polly, lex, \
+q-developer, q-business, aws-transform, comprehend, rekognition, textract, transcribe, polly, lex, \
 personalize, kendra, neuron, lambda, cloudwatch, elasticache, opensearch, other-aws
 
 ### Dimension 2: Announcement Type (types)
