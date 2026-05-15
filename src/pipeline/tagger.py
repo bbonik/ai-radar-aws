@@ -91,13 +91,62 @@ class Tagger:
     def _apply_post_processing_rules(item: RSSItem, tags: AnnouncementTags) -> AnnouncementTags:
         """Apply deterministic post-processing rules to fix known LLM tagging gaps.
 
-        The LLM sometimes misses service tags when multiple services are mentioned.
-        These rules ensure key services are always tagged when explicitly named.
+        Rules:
+        1. Validate service tags against the title (services must be named in title)
+        2. Force aws-transform when title mentions it
         """
-        text = (item.title + " " + item.description).lower()
+        title_lower = item.title.lower()
+        text_lower = (item.title + " " + item.description).lower()
 
-        # Rule: "AWS Transform" mentioned → ensure aws-transform is in services
-        if "aws transform" in text and "aws-transform" not in tags.services:
+        # Rule 1: Validate service tags — only keep services whose name appears in the title
+        # Map tag names to title keywords they should match
+        service_title_keywords = {
+            "bedrock": "bedrock",
+            "bedrock-agentcore": "agentcore",
+            "sagemaker": "sagemaker",
+            "sagemaker-ai": "sagemaker ai",
+            "sagemaker-jumpstart": "jumpstart",
+            "sagemaker-hyperpod": "hyperpod",
+            "sagemaker-unified-studio": "unified studio",
+            "quicksight": "quicksight",
+            "quick": "quick",
+            "quick-suite": "quick suite",
+            "kiro": "kiro",
+            "q-developer": "q developer",
+            "q-business": "q business",
+            "aws-transform": "transform",
+            "comprehend": "comprehend",
+            "rekognition": "rekognition",
+            "textract": "textract",
+            "transcribe": "transcribe",
+            "polly": "polly",
+            "lex": "lex",
+            "personalize": "personalize",
+            "kendra": "kendra",
+            "neuron": "neuron",
+            "lambda": "lambda",
+            "cloudwatch": "cloudwatch",
+            "elasticache": "elasticache",
+            "opensearch": "opensearch",
+        }
+
+        validated_services = []
+        for tag in tags.services:
+            if tag == "other-aws":
+                validated_services.append(tag)
+                continue
+            keyword = service_title_keywords.get(tag, tag)
+            if keyword in title_lower:
+                validated_services.append(tag)
+
+        # If all services were filtered out, keep "other-aws"
+        if not validated_services and tags.services:
+            validated_services = ["other-aws"]
+
+        tags.services = validated_services
+
+        # Rule 2: Force aws-transform when title mentions it
+        if "transform" in title_lower and "aws-transform" not in tags.services:
             tags.services.append("aws-transform")
 
         return tags

@@ -289,10 +289,11 @@ Description: "Available in US East (N. Virginia)..."
 Why: Only available in a US region
 
 ## Instructions
+- For services dimension: ONLY look at the TITLE to determine which AWS services to tag. Do NOT infer services from the description body.
 - Assign 1-3 tags per dimension (fewer is better; only assign what clearly applies)
 - For providers dimension: only assign if a specific model provider is mentioned
 - If no tags clearly apply for a dimension, return an empty list for that dimension
-- If the announcement title or description mentions "AWS Transform", always include "aws-transform" in services
+- If the announcement title mentions "AWS Transform", always include "aws-transform" in services
 - For geo_availability: pick exactly ONE value following the rules and examples above
 - Return ONLY valid JSON with no additional text
 
