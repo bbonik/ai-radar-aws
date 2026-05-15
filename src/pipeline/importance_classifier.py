@@ -167,10 +167,17 @@ class ImportanceClassifier:
     def compute_geo_relevance(self, item: RSSItem, tags: AnnouncementTags | None = None) -> str:
         """Determine geographic relevance of an announcement.
 
+        Logic (in order):
+        1. "all regions" keywords → "global"
+        2. Preferred geography keywords found → "local"
+        3. Any non-preferred geography keywords found → "" (region-specific, not for you)
+        4. No regions detected at all + GA/new-feature on APJ service → "global" (inferred)
+        5. Otherwise → ""
+
         Returns:
             "local" — explicitly mentions the user's preferred geography
-            "global" — says "all regions" / "globally available" / GA for APJ-available service
-            "" — not relevant to user's geography or not a region-related announcement
+            "global" — all regions, or inferred global for GA/new-feature (no region mentioned)
+            "" — not relevant or unknown
         """
         preferred = self.config.preferred_geography.lower()
         if preferred == "global":
@@ -178,25 +185,39 @@ class ImportanceClassifier:
 
         text = (item.title + " " + item.description).lower()
 
-        # Check for "all regions" / global availability keywords
+        # Step 1: Check for "all regions" / global availability keywords
         for keyword in GLOBAL_AVAILABILITY_KEYWORDS:
             if keyword in text:
                 return "global"
 
-        # Check if preferred geography is explicitly mentioned
+        # Step 2: Check if preferred geography is explicitly mentioned
+        preferred_mentioned = False
         if preferred in GEOGRAPHY_KEYWORDS:
             for keyword in GEOGRAPHY_KEYWORDS[preferred]:
                 if keyword in text:
-                    return "local"
+                    preferred_mentioned = True
+                    break
 
-        # Infer global for GA launches of services known to be in APJ
-        if tags and "ga-launch" in tags.types:
-            if any(svc in self.APJ_AVAILABLE_SERVICES for svc in tags.services):
-                return "global"
+        if preferred_mentioned:
+            return "local"
 
-        # Infer global for new features on services known to be in APJ
-        # (new features on existing services are typically available where the service is)
-        if tags and "new-feature" in tags.types:
+        # Step 3: Check if ANY non-preferred geography is mentioned
+        any_region_mentioned = False
+        for geography, keywords in GEOGRAPHY_KEYWORDS.items():
+            if geography == preferred:
+                continue
+            for keyword in keywords:
+                if keyword in text:
+                    any_region_mentioned = True
+                    break
+            if any_region_mentioned:
+                break
+
+        if any_region_mentioned:
+            return ""  # Region-specific to somewhere else
+
+        # Step 4: No regions detected — infer global for GA/new-feature on APJ-available service
+        if tags and ("ga-launch" in tags.types or "new-feature" in tags.types):
             if any(svc in self.APJ_AVAILABLE_SERVICES for svc in tags.services):
                 return "global"
 

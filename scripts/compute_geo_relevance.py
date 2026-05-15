@@ -31,7 +31,14 @@ APJ_AVAILABLE_SERVICES = ImportanceClassifier.APJ_AVAILABLE_SERVICES
 
 
 def compute_geo_relevance_for_row(row: dict, preferred: str) -> str:
-    """Compute geo_relevance from announcement CSV row (text + tags)."""
+    """Compute geo_relevance from announcement CSV row (text + tags).
+
+    Logic:
+    1. "all regions" keywords → "global"
+    2. Preferred geography keywords → "local"
+    3. Any non-preferred geography keywords → "" (region-specific elsewhere)
+    4. No regions at all + GA/new-feature on APJ service → "global" (inferred)
+    """
     if preferred == "global":
         return ""
 
@@ -39,18 +46,33 @@ def compute_geo_relevance_for_row(row: dict, preferred: str) -> str:
     description = row.get("description", "")
     text = (title + " " + description).lower()
 
-    # Check for global availability keywords first
+    # Step 1: Check for global availability keywords
     for keyword in GLOBAL_AVAILABILITY_KEYWORDS:
         if keyword in text:
             return "global"
 
-    # Check if preferred geography is mentioned
+    # Step 2: Check if preferred geography is mentioned
     if preferred in GEOGRAPHY_KEYWORDS:
         for keyword in GEOGRAPHY_KEYWORDS[preferred]:
             if keyword in text:
                 return "local"
 
-    # Infer global from tags: GA launch or new feature on APJ-available service
+    # Step 3: Check if any non-preferred geography is mentioned
+    any_region_mentioned = False
+    for geography, keywords in GEOGRAPHY_KEYWORDS.items():
+        if geography == preferred:
+            continue
+        for keyword in keywords:
+            if keyword in text:
+                any_region_mentioned = True
+                break
+        if any_region_mentioned:
+            break
+
+    if any_region_mentioned:
+        return ""  # Region-specific to somewhere else
+
+    # Step 4: No regions detected — infer global for GA/new-feature on APJ service
     tags_raw = row.get("tags", "")
     if tags_raw:
         tags = AnnouncementTags.deserialize(tags_raw)
