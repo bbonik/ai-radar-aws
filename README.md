@@ -121,6 +121,8 @@ That's it. Two commands from zero to a running website.
 | `./rebuild-site.sh` | Deploy code + rebuild website | After code changes |
 | `./rebuild-site.sh --skip-cdk` | Just rebuild website (no CDK) | After data-only changes |
 | `./rebuild-site.sh --pipeline` | Run full pipeline + rebuild | Fetch new news manually |
+| `./run-pipeline.sh` | Trigger pipeline with live progress | See real-time processing status |
+| `./run-pipeline.sh --watch` | Watch an already-running pipeline | Monitor ongoing pipeline run |
 | `python scripts/retag_announcements.py` | Tag existing announcements | After taxonomy changes |
 | `python scripts/retag_announcements.py --force` | Re-tag ALL announcements | When taxonomy tags are updated |
 | `python scripts/reclassify_announcements.py` | Recompute importance scores | After scoring changes |
