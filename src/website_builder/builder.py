@@ -1852,8 +1852,11 @@ JS_TEMPLATE = """\
     var today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    if (filters.timePeriod === '7' || filters.timePeriod === '30' || filters.timePeriod === '90') {
-      var days = parseInt(filters.timePeriod, 10);
+    if (filters.timePeriod === 'week' || filters.timePeriod === 'month' || filters.timePeriod === '3months') {
+      var days;
+      if (filters.timePeriod === 'week') days = 7;
+      else if (filters.timePeriod === 'month') days = 30;
+      else days = 90;
       var fullRange = generateDailyRange(today, days);
       labels = fullRange;
       s1 = fullRange.map(function(d) { return dayCounts[d] ? dayCounts[d].s1 : 0; });
