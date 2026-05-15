@@ -1828,7 +1828,8 @@ JS_TEMPLATE = """\
     var ctx = document.getElementById('timeline-chart');
     if (!ctx || !window.Chart || !timelineData.labels) return;
     ctx._chartInitialized = true;
-    renderTimeline(timelineData.labels, timelineData.star1, timelineData.star2, timelineData.star3, timelineData.star4, timelineData.star5);
+    // Use updateTimeline for consistent gap-filling logic from the start
+    updateTimeline();
   }
 
   function updateTimeline() {
