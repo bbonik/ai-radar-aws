@@ -59,6 +59,7 @@ class Tagger:
             prompt = self._build_prompt(item)
             response_text = self._invoke_bedrock(prompt, item.link)
             tags = self._parse_response(response_text, item.link)
+            tags = self._apply_post_processing_rules(item, tags)
             self._logger.info(
                 "Tagging complete",
                 announcement_link=item.link,
@@ -85,6 +86,21 @@ class Tagger:
             title=item.title,
             description=item.description,
         )
+
+    @staticmethod
+    def _apply_post_processing_rules(item: RSSItem, tags: AnnouncementTags) -> AnnouncementTags:
+        """Apply deterministic post-processing rules to fix known LLM tagging gaps.
+
+        The LLM sometimes misses service tags when multiple services are mentioned.
+        These rules ensure key services are always tagged when explicitly named.
+        """
+        text = (item.title + " " + item.description).lower()
+
+        # Rule: "AWS Transform" mentioned → ensure aws-transform is in services
+        if "aws transform" in text and "aws-transform" not in tags.services:
+            tags.services.append("aws-transform")
+
+        return tags
 
     def _invoke_bedrock(self, prompt: str, announcement_link: str) -> str:
         """Call Bedrock invoke_model with retry logic.

@@ -233,6 +233,7 @@ amazon, alibaba, community
 - Assign 1-3 tags per dimension (fewer is better; only assign what clearly applies)
 - For providers dimension: only assign if a specific model provider is mentioned
 - If no tags clearly apply for a dimension, return an empty list for that dimension
+- If the announcement title or description mentions "AWS Transform", always include "aws-transform" in services
 - Return ONLY valid JSON with no additional text
 
 ## Output Format
