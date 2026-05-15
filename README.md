@@ -154,9 +154,9 @@ The website is automatically rebuilt when the pipeline finishes. Hard-refresh (C
 2. **RSS Fetcher** retrieves the AWS "What's New" feed (100 items)
 3. **Deduplication** skips previously processed announcements (by link)
 4. **Relevance Filter** applies regex patterns for AI/ML/GenAI keywords
-5. **Taxonomy Tagger** (Haiku 4.5) assigns multi-dimensional tags across 5 dimensions
+5. **Taxonomy Tagger** (Haiku 4.5) assigns multi-dimensional tags across 6 dimensions (services from title only, types/concepts/use_cases/providers from full text, geo_availability via LLM)
 6. **Importance Classifier** computes a point score → 1-5 stars (uses tags + geographic preference for scoring)
-7. **Geographic Relevance** detects whether the announcement is relevant to the user's geography (APJ by default)
+7. **Geographic Relevance** hybrid detection: APJ keyword match (authoritative) + LLM geo_availability + keyword fallback
 7. **Research Agent** follows blogpost/doc links for additional context
 8. **Report Generator** (Sonnet 4.6) produces structured 6-section reports + card summary
 9. **Graph Generator** (Opus 4.6) creates Mermaid visual summaries (2-5 star only)
