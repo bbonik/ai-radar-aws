@@ -1846,12 +1846,24 @@ JS_TEMPLATE = """\
       dayCounts[dateStr]['s' + importance]++;
     });
 
-    var sortedDates = Object.keys(dayCounts).sort();
-
-    // If "All" filter and more than 90 days of data, aggregate by week
+    // Generate complete date range based on time filter (fill gaps with zeros)
     var labels, s1, s2, s3, s4, s5;
-    if (filters.timePeriod === 'all' && sortedDates.length > 90) {
-      var weekData = aggregateByWeek(dayCounts, sortedDates);
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (filters.timePeriod === '7' || filters.timePeriod === '30') {
+      var days = parseInt(filters.timePeriod, 10);
+      var fullRange = generateDailyRange(today, days);
+      labels = fullRange;
+      s1 = fullRange.map(function(d) { return dayCounts[d] ? dayCounts[d].s1 : 0; });
+      s2 = fullRange.map(function(d) { return dayCounts[d] ? dayCounts[d].s2 : 0; });
+      s3 = fullRange.map(function(d) { return dayCounts[d] ? dayCounts[d].s3 : 0; });
+      s4 = fullRange.map(function(d) { return dayCounts[d] ? dayCounts[d].s4 : 0; });
+      s5 = fullRange.map(function(d) { return dayCounts[d] ? dayCounts[d].s5 : 0; });
+    } else if (filters.timePeriod === '90') {
+      // 90 days → weekly aggregation (13 weeks) with gap filling
+      var fullRange = generateDailyRange(today, 90);
+      var weekData = aggregateByWeekFromRange(dayCounts, fullRange);
       labels = weekData.labels;
       s1 = weekData.s1;
       s2 = weekData.s2;
@@ -1859,23 +1871,43 @@ JS_TEMPLATE = """\
       s4 = weekData.s4;
       s5 = weekData.s5;
     } else {
-      labels = sortedDates;
-      s1 = sortedDates.map(function(d) { return dayCounts[d].s1; });
-      s2 = sortedDates.map(function(d) { return dayCounts[d].s2; });
-      s3 = sortedDates.map(function(d) { return dayCounts[d].s3; });
-      s4 = sortedDates.map(function(d) { return dayCounts[d].s4; });
-      s5 = sortedDates.map(function(d) { return dayCounts[d].s5; });
+      // "All" — weekly aggregation with gap filling
+      var sortedDates = Object.keys(dayCounts).sort();
+      if (sortedDates.length > 0) {
+        var firstDate = new Date(sortedDates[0] + 'T00:00:00');
+        var totalDays = Math.ceil((today - firstDate) / (1000 * 60 * 60 * 24)) + 1;
+        var fullRange = generateDailyRange(today, totalDays);
+        var weekData = aggregateByWeekFromRange(dayCounts, fullRange);
+        labels = weekData.labels;
+        s1 = weekData.s1;
+        s2 = weekData.s2;
+        s3 = weekData.s3;
+        s4 = weekData.s4;
+        s5 = weekData.s5;
+      } else {
+        labels = []; s1 = []; s2 = []; s3 = []; s4 = []; s5 = [];
+      }
     }
 
     renderTimeline(labels, s1, s2, s3, s4, s5);
   }
 
-  function aggregateByWeek(dayCounts, sortedDates) {
-    // Group dates into ISO weeks (Mon-Sun)
+  function generateDailyRange(endDate, numDays) {
+    // Generate array of YYYY-MM-DD strings for the last numDays ending at endDate
+    var range = [];
+    for (var i = numDays - 1; i >= 0; i--) {
+      var d = new Date(endDate);
+      d.setDate(d.getDate() - i);
+      range.push(d.toISOString().slice(0, 10));
+    }
+    return range;
+  }
+
+  function aggregateByWeekFromRange(dayCounts, dailyRange) {
+    // Group a complete daily range into ISO weeks, filling gaps with zeros
     var weeks = {};
-    sortedDates.forEach(function(dateStr) {
+    dailyRange.forEach(function(dateStr) {
       var d = new Date(dateStr + 'T00:00:00Z');
-      // Get Monday of this week
       var day = d.getUTCDay();
       var diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
       var monday = new Date(d);
@@ -1884,11 +1916,13 @@ JS_TEMPLATE = """\
 
       if (!weeks[weekLabel]) weeks[weekLabel] = {s1:0, s2:0, s3:0, s4:0, s5:0};
       var dc = dayCounts[dateStr];
-      weeks[weekLabel].s1 += dc.s1;
-      weeks[weekLabel].s2 += dc.s2;
-      weeks[weekLabel].s3 += dc.s3;
-      weeks[weekLabel].s4 += dc.s4;
-      weeks[weekLabel].s5 += dc.s5;
+      if (dc) {
+        weeks[weekLabel].s1 += dc.s1;
+        weeks[weekLabel].s2 += dc.s2;
+        weeks[weekLabel].s3 += dc.s3;
+        weeks[weekLabel].s4 += dc.s4;
+        weeks[weekLabel].s5 += dc.s5;
+      }
     });
 
     var weekLabels = Object.keys(weeks).sort();
