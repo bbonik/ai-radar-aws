@@ -1851,7 +1851,7 @@ JS_TEMPLATE = """\
     var today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    if (filters.timePeriod === '7' || filters.timePeriod === '30') {
+    if (filters.timePeriod === '7' || filters.timePeriod === '30' || filters.timePeriod === '90') {
       var days = parseInt(filters.timePeriod, 10);
       var fullRange = generateDailyRange(today, days);
       labels = fullRange;
@@ -1860,16 +1860,6 @@ JS_TEMPLATE = """\
       s3 = fullRange.map(function(d) { return dayCounts[d] ? dayCounts[d].s3 : 0; });
       s4 = fullRange.map(function(d) { return dayCounts[d] ? dayCounts[d].s4 : 0; });
       s5 = fullRange.map(function(d) { return dayCounts[d] ? dayCounts[d].s5 : 0; });
-    } else if (filters.timePeriod === '90') {
-      // 90 days → weekly aggregation (13 weeks) with gap filling
-      var fullRange = generateDailyRange(today, 90);
-      var weekData = aggregateByWeekFromRange(dayCounts, fullRange);
-      labels = weekData.labels;
-      s1 = weekData.s1;
-      s2 = weekData.s2;
-      s3 = weekData.s3;
-      s4 = weekData.s4;
-      s5 = weekData.s5;
     } else {
       // "All" — weekly aggregation with gap filling
       var sortedDates = Object.keys(dayCounts).sort();
