@@ -1760,7 +1760,7 @@ JS_TEMPLATE = """\
 
       // Time period filter
       if (dateThreshold && cardDate) {
-        var cardDateObj = new Date(cardDate + 'T00:00:00Z');
+        var cardDateObj = new Date(cardDate + 'T00:00:00');
         if (cardDateObj < dateThreshold) {
           visible = false;
         }
@@ -1889,11 +1889,15 @@ JS_TEMPLATE = """\
 
   function generateDailyRange(endDate, numDays) {
     // Generate array of YYYY-MM-DD strings for the last numDays ending at endDate
+    // Uses local date (not UTC) to match the user's timezone
     var range = [];
     for (var i = numDays - 1; i >= 0; i--) {
       var d = new Date(endDate);
       d.setDate(d.getDate() - i);
-      range.push(d.toISOString().slice(0, 10));
+      var yyyy = d.getFullYear();
+      var mm = String(d.getMonth() + 1).padStart(2, '0');
+      var dd = String(d.getDate()).padStart(2, '0');
+      range.push(yyyy + '-' + mm + '-' + dd);
     }
     return range;
   }
