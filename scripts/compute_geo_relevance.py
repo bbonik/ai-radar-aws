@@ -21,15 +21,22 @@ from src.config import Config
 from src.pipeline.importance_classifier import (
     GEOGRAPHY_KEYWORDS,
     GLOBAL_AVAILABILITY_KEYWORDS,
+    ImportanceClassifier,
 )
-from src.shared.models import ProcessedAnnouncement, RSSItem
+from src.shared.models import AnnouncementTags, ProcessedAnnouncement, RSSItem
 
 
-def compute_geo_relevance_for_text(title: str, description: str, preferred: str) -> str:
-    """Compute geo_relevance from announcement text."""
+# Services known to be available in APJ (mirrors ImportanceClassifier.APJ_AVAILABLE_SERVICES)
+APJ_AVAILABLE_SERVICES = ImportanceClassifier.APJ_AVAILABLE_SERVICES
+
+
+def compute_geo_relevance_for_row(row: dict, preferred: str) -> str:
+    """Compute geo_relevance from announcement CSV row (text + tags)."""
     if preferred == "global":
         return ""
 
+    title = row.get("title", "")
+    description = row.get("description", "")
     text = (title + " " + description).lower()
 
     # Check for global availability keywords first
@@ -42,6 +49,14 @@ def compute_geo_relevance_for_text(title: str, description: str, preferred: str)
         for keyword in GEOGRAPHY_KEYWORDS[preferred]:
             if keyword in text:
                 return "local"
+
+    # Infer global from tags: GA launch or new feature on APJ-available service
+    tags_raw = row.get("tags", "")
+    if tags_raw:
+        tags = AnnouncementTags.deserialize(tags_raw)
+        if ("ga-launch" in tags.types or "new-feature" in tags.types):
+            if any(svc in APJ_AVAILABLE_SERVICES for svc in tags.services):
+                return "global"
 
     return ""
 
@@ -98,10 +113,8 @@ def main():
     # Compute geo_relevance for each row
     updated = 0
     for row in rows:
-        title = row.get("title", "")
-        description = row.get("description", "")
         old_value = row.get("geo_relevance", "")
-        new_value = compute_geo_relevance_for_text(title, description, preferred)
+        new_value = compute_geo_relevance_for_row(row, preferred)
 
         if new_value != old_value:
             updated += 1

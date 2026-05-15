@@ -157,12 +157,19 @@ class ImportanceClassifier:
 
         return (star_level, score)
 
+    # Services known to be available in APJ (used for GA inference)
+    APJ_AVAILABLE_SERVICES = {
+        "bedrock", "bedrock-agentcore", "sagemaker", "sagemaker-ai",
+        "sagemaker-jumpstart", "sagemaker-hyperpod", "sagemaker-unified-studio",
+        "quicksight", "quick", "quick-suite", "kiro", "q-developer",
+    }
+
     def compute_geo_relevance(self, item: RSSItem, tags: AnnouncementTags | None = None) -> str:
         """Determine geographic relevance of an announcement.
 
         Returns:
             "local" — explicitly mentions the user's preferred geography
-            "global" — says "all regions" / "globally available" (includes user)
+            "global" — says "all regions" / "globally available" / GA for APJ-available service
             "" — not relevant to user's geography or not a region-related announcement
         """
         preferred = self.config.preferred_geography.lower()
@@ -181,6 +188,17 @@ class ImportanceClassifier:
             for keyword in GEOGRAPHY_KEYWORDS[preferred]:
                 if keyword in text:
                     return "local"
+
+        # Infer global for GA launches of services known to be in APJ
+        if tags and "ga-launch" in tags.types:
+            if any(svc in self.APJ_AVAILABLE_SERVICES for svc in tags.services):
+                return "global"
+
+        # Infer global for new features on services known to be in APJ
+        # (new features on existing services are typically available where the service is)
+        if tags and "new-feature" in tags.types:
+            if any(svc in self.APJ_AVAILABLE_SERVICES for svc in tags.services):
+                return "global"
 
         return ""
 
