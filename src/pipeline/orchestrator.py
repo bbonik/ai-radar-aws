@@ -309,14 +309,31 @@ class PipelineOrchestrator:
         return self._importance_classifier._extract_service(item)
 
     def _extract_blogpost_links(self, item: RSSItem) -> list[str]:
-        """Extract external blogpost links from the item description."""
+        """Extract external blogpost links from the item description.
+
+        Strips trailing punctuation from URLs and filters out:
+        - The item's own AWS whats-new link
+        - AWS service homepages (e.g., https://aws.amazon.com/transform)
+        """
         url_pattern = re.compile(r"https?://\S+")
-        urls = url_pattern.findall(item.description)
-        # Filter out the item's own AWS whats-new link
-        return [
-            url for url in urls
-            if not url.startswith("https://aws.amazon.com/about-aws/whats-new/")
-        ]
+        raw_urls = url_pattern.findall(item.description)
+
+        cleaned = []
+        for url in raw_urls:
+            # Strip trailing punctuation
+            while url and url[-1] in ".),;:!?\"'":
+                url = url[:-1]
+            if not url:
+                continue
+            # Exclude the item's own AWS whats-new link
+            if url.startswith("https://aws.amazon.com/about-aws/whats-new/"):
+                continue
+            # Exclude AWS service homepages
+            if re.match(r"https?://aws\.amazon\.com/[a-z0-9-]+/?$", url):
+                continue
+            cleaned.append(url)
+
+        return cleaned
 
     @staticmethod
     def _determine_failure_stage(exc: Exception) -> str:

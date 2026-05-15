@@ -82,6 +82,17 @@ GLOBAL_AVAILABILITY_KEYWORDS: list[str] = [
 ]
 
 
+def _clean_url(url: str) -> str:
+    """Strip trailing punctuation that was captured by the URL regex.
+
+    Handles: trailing '.', ')', ').', ',', ';', '."', etc.
+    """
+    # Strip common trailing punctuation that's not part of URLs
+    while url and url[-1] in ".),;:!?\"'":
+        url = url[:-1]
+    return url
+
+
 class ImportanceClassifier:
     """Classifies announcements by importance using a point-based scoring system.
 
@@ -410,7 +421,8 @@ class ImportanceClassifier:
         """Check if the item description contains external blogpost links.
 
         Looks for URLs (http:// or https://) in the description that are
-        NOT the AWS whats-new URL (the item's own link).
+        NOT the AWS whats-new URL (the item's own link) and NOT just a
+        service homepage.
 
         Args:
             item: The RSS item to check.
@@ -421,9 +433,16 @@ class ImportanceClassifier:
         urls = self._url_pattern.findall(item.description)
 
         for url in urls:
+            url = _clean_url(url)
+            if not url:
+                continue
             # Exclude the item's own AWS whats-new link
-            if not url.startswith("https://aws.amazon.com/about-aws/whats-new/"):
-                return True
+            if url.startswith("https://aws.amazon.com/about-aws/whats-new/"):
+                continue
+            # Exclude AWS service homepages (e.g., https://aws.amazon.com/transform)
+            if re.match(r"https?://aws\.amazon\.com/[a-z0-9-]+/?$", url):
+                continue
+            return True
 
         return False
 
