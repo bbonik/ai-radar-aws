@@ -33,15 +33,30 @@ APJ_AVAILABLE_SERVICES = ImportanceClassifier.APJ_AVAILABLE_SERVICES
 def compute_geo_relevance_for_row(row: dict, preferred: str) -> str:
     """Compute geo_relevance from announcement CSV row (text + tags).
 
+    Primary: uses LLM tagger's geo_availability from tags JSON.
+    Fallback: keyword-based detection if geo_availability is missing/unknown.
+
     Logic:
-    1. "all regions" keywords → "global"
-    2. Preferred geography keywords → "local"
-    3. Any non-preferred geography keywords → "" (region-specific elsewhere)
-    4. No regions at all + GA/new-feature on APJ service → "global" (inferred)
+    1. Check tagger's geo_availability field
+    2. If empty/unknown, fall back to keyword-based detection
     """
     if preferred == "global":
         return ""
 
+    # Primary: use tagger's geo_availability from tags
+    tags_raw = row.get("tags", "")
+    if tags_raw:
+        tags = AnnouncementTags.deserialize(tags_raw)
+        if tags.geo_availability and tags.geo_availability != "unknown":
+            geo = tags.geo_availability
+            if geo == preferred:
+                return "local"
+            elif geo == "global":
+                return "global"
+            else:
+                return ""  # Specific non-preferred geography
+
+    # Fallback: keyword-based detection
     title = row.get("title", "")
     description = row.get("description", "")
     text = (title + " " + description).lower()
@@ -73,7 +88,6 @@ def compute_geo_relevance_for_row(row: dict, preferred: str) -> str:
         return ""  # Region-specific to somewhere else
 
     # Step 4: No regions detected — infer global for GA/new-feature on APJ service
-    tags_raw = row.get("tags", "")
     if tags_raw:
         tags = AnnouncementTags.deserialize(tags_raw)
         if ("ga-launch" in tags.types or "new-feature" in tags.types):

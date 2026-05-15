@@ -170,7 +170,9 @@ class PipelineOrchestrator:
             star_level, score = self._importance_classifier.classify(item, tags)
 
             # Stage 5b: Compute geographic relevance for card badge
-            geo_relevance = self._importance_classifier.compute_geo_relevance(item, tags)
+            # Primary: use LLM tagger's geo_availability output
+            # Fallback: keyword-based detection if tagger returns empty/unknown
+            geo_relevance = self._resolve_geo_relevance(item, tags)
 
             # Stage 6: Research
             research_context = self._research_agent.research(item)
@@ -307,6 +309,35 @@ class PipelineOrchestrator:
     def _extract_service_name(self, item: RSSItem) -> str:
         """Extract the AWS service name from the item using the importance classifier's logic."""
         return self._importance_classifier._extract_service(item)
+
+    def _resolve_geo_relevance(self, item: RSSItem, tags) -> str:
+        """Resolve geographic relevance from tagger output with keyword fallback.
+
+        Maps tagger's geo_availability to the geo_relevance badge values:
+        - "apj" → "local" (user's preferred geography)
+        - "global" → "global"
+        - "emea", "americas", "unknown", "" → "" (not relevant or unknown)
+
+        Falls back to keyword-based detection if tagger returns empty/unknown.
+        """
+        preferred = self._config.preferred_geography.lower()
+
+        # Primary: use LLM tagger's geo_availability
+        if tags and tags.geo_availability:
+            geo = tags.geo_availability
+            if geo == preferred:
+                return "local"
+            elif geo == "global":
+                return "global"
+            elif geo == "unknown":
+                # Fall through to keyword-based fallback
+                pass
+            else:
+                # Specific non-preferred geography (emea, americas, etc.)
+                return ""
+
+        # Fallback: keyword-based detection
+        return self._importance_classifier.compute_geo_relevance(item, tags)
 
     def _extract_blogpost_links(self, item: RSSItem) -> list[str]:
         """Extract external blogpost links from the item description.

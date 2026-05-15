@@ -222,6 +222,7 @@ class Tagger:
             concepts=self._validate_tags(data.get("concepts", []), _VALID_CONCEPTS),
             use_cases=self._validate_tags(data.get("use_cases", []), _VALID_USE_CASES),
             providers=self._validate_tags(data.get("providers", []), _VALID_PROVIDERS),
+            geo_availability=self._validate_geo(data.get("geo_availability", "")),
         )
 
     @staticmethod
@@ -231,13 +232,22 @@ class Tagger:
             return []
         return [tag for tag in tags if isinstance(tag, str) and tag in valid_set]
 
+    @staticmethod
+    def _validate_geo(value) -> str:
+        """Validate geo_availability value."""
+        if not isinstance(value, str):
+            return ""
+        if value in _VALID_GEO_AVAILABILITY:
+            return value
+        return ""
+
 
 # Valid taxonomy tag sets for validation
 _VALID_SERVICES = {
     "bedrock", "bedrock-agentcore", "sagemaker", "sagemaker-ai",
     "sagemaker-jumpstart", "sagemaker-hyperpod", "sagemaker-unified-studio",
     "quicksight", "quick", "quick-suite", "kiro", "q-developer", "q-business",
-    "comprehend", "rekognition", "textract", "transcribe", "polly", "lex",
+    "aws-transform", "comprehend", "rekognition", "textract", "transcribe", "polly", "lex",
     "personalize", "kendra", "neuron", "lambda", "cloudwatch", "elasticache",
     "opensearch", "other-aws",
 }
@@ -265,4 +275,8 @@ _VALID_USE_CASES = {
 _VALID_PROVIDERS = {
     "anthropic", "openai", "meta", "google", "nvidia", "mistral",
     "cohere", "stability", "amazon", "alibaba", "community",
+}
+
+_VALID_GEO_AVAILABILITY = {
+    "apj", "emea", "americas", "global", "unknown",
 }

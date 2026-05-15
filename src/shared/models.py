@@ -33,6 +33,7 @@ class AnnouncementTags:
     concepts: list[str] = field(default_factory=list)
     use_cases: list[str] = field(default_factory=list)
     providers: list[str] = field(default_factory=list)
+    geo_availability: str = ""  # "apj", "emea", "americas", "global", "unknown", or ""
 
     def all_tags(self) -> list[str]:
         """Return all tags as a flat list."""
@@ -46,6 +47,7 @@ class AnnouncementTags:
             "concepts": self.concepts,
             "use_cases": self.use_cases,
             "providers": self.providers,
+            "geo_availability": self.geo_availability,
         })
 
     @classmethod
@@ -61,6 +63,7 @@ class AnnouncementTags:
                 concepts=d.get("concepts", []),
                 use_cases=d.get("use_cases", []),
                 providers=d.get("providers", []),
+                geo_availability=d.get("geo_availability", ""),
             )
         except (json.JSONDecodeError, TypeError):
             return cls()
