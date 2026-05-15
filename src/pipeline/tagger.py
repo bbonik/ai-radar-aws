@@ -200,21 +200,32 @@ class Tagger:
     def _parse_response(self, response_text: str, announcement_link: str) -> AnnouncementTags:
         """Parse the LLM JSON response into an AnnouncementTags object.
 
-        Extracts JSON from the response text (handles markdown code blocks).
+        Robust extraction: handles markdown code blocks, prose around JSON,
+        trailing commas, and other common LLM output quirks.
         Validates that tags are from the allowed taxonomy.
         """
-        # Try to extract JSON from the response (may be wrapped in ```json ... ```)
-        json_text = response_text.strip()
-        if "```" in json_text:
-            # Extract content between code fences
-            start = json_text.find("```")
-            # Skip the opening fence line
-            start = json_text.find("\n", start) + 1
-            end = json_text.find("```", start)
-            if end != -1:
-                json_text = json_text[start:end].strip()
+        json_text = self._extract_json(response_text)
 
-        data = json.loads(json_text)
+        try:
+            data = json.loads(json_text)
+        except json.JSONDecodeError:
+            # Try fixing common issues: trailing commas, single quotes
+            fixed = json_text.replace("'", '"')
+            # Remove trailing commas before } or ]
+            import re
+            fixed = re.sub(r",\s*([}\]])", r"\1", fixed)
+            try:
+                data = json.loads(fixed)
+            except json.JSONDecodeError:
+                self._logger.warning(
+                    "Could not parse tagger JSON response",
+                    announcement_link=announcement_link,
+                    response_preview=response_text[:200],
+                )
+                return AnnouncementTags()
+
+        if not isinstance(data, dict):
+            return AnnouncementTags()
 
         return AnnouncementTags(
             services=self._validate_tags(data.get("services", []), _VALID_SERVICES),
@@ -224,6 +235,53 @@ class Tagger:
             providers=self._validate_tags(data.get("providers", []), _VALID_PROVIDERS),
             geo_availability=self._validate_geo(data.get("geo_availability", "")),
         )
+
+    @staticmethod
+    def _extract_json(response_text: str) -> str:
+        """Extract JSON from LLM response, handling various output formats.
+
+        Handles:
+        - Pure JSON
+        - JSON wrapped in ```json ... ``` code blocks
+        - JSON embedded in prose (finds first { to last })
+        """
+        text = response_text.strip()
+
+        # Case 1: Markdown code block
+        if "```" in text:
+            start = text.find("```")
+            # Skip the opening fence line (```json or ```)
+            start = text.find("\n", start) + 1
+            end = text.find("```", start)
+            if end != -1:
+                return text[start:end].strip()
+
+        # Case 2: Starts with { — likely pure JSON (possibly with trailing text)
+        if text.startswith("{"):
+            # Find the matching closing brace
+            depth = 0
+            for i, ch in enumerate(text):
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return text[: i + 1]
+            return text  # Unbalanced — try anyway
+
+        # Case 3: JSON embedded in prose — find first { to matching }
+        brace_start = text.find("{")
+        if brace_start != -1:
+            depth = 0
+            for i in range(brace_start, len(text)):
+                if text[i] == "{":
+                    depth += 1
+                elif text[i] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        return text[brace_start: i + 1]
+
+        return text  # Last resort — return as-is
 
     @staticmethod
     def _validate_tags(tags: list, valid_set: set[str]) -> list[str]:

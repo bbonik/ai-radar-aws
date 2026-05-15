@@ -134,6 +134,7 @@ class TestProcessedAnnouncement:
             "first_detected",
             "card_summary",
             "tags",
+            "geo_relevance",
         }
         assert set(row.keys()) == expected_keys
 
