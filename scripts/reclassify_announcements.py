@@ -94,6 +94,28 @@ def main():
         else:
             pass  # No change
 
+        # Clean blogpost_links: strip trailing punctuation + filter service homepages
+        raw_links = row.get("blogpost_links", "")
+        if raw_links:
+            links = raw_links.split("|")
+            cleaned = []
+            for url in links:
+                # Strip trailing punctuation
+                while url and url[-1] in ".),;:!?\"'":
+                    url = url[:-1]
+                if not url:
+                    continue
+                # Filter out service homepages
+                import re
+                if re.match(r"https?://aws\.amazon\.com/[a-z0-9-]+/?$", url):
+                    continue
+                cleaned.append(url)
+            new_links = "|".join(cleaned)
+            if new_links != raw_links:
+                row["blogpost_links"] = new_links
+                if new_star == old_star:  # Only count if not already counted above
+                    changed_count += 1
+
     print(f"\nReclassified: {changed_count} announcements changed")
 
     if changed_count == 0:
