@@ -54,7 +54,7 @@ TOTAL_RELEVANT=0
 ERRORS=0
 STARTED=false
 
-aws logs tail "$LOG_GROUP" --since 30s --follow --format short --region "$REGION" 2>&1 | while IFS= read -r line; do
+aws logs tail "$LOG_GROUP" --since 2m --follow --format short --region "$REGION" 2>&1 | while IFS= read -r line; do
     # Skip empty lines and REPORT/START/END lines
     if [[ -z "$line" ]] || [[ "$line" == *"REPORT RequestId"* ]] || [[ "$line" == *"START RequestId"* ]] || [[ "$line" == *"END RequestId"* ]] || [[ "$line" == *"INIT_START"* ]]; then
         continue
