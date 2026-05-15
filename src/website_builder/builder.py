@@ -1738,16 +1738,17 @@ JS_TEMPLATE = """\
     if (!cardsContainer) return;
     var cards = cardsContainer.querySelectorAll('.announcement-card');
     var now = new Date();
+    now.setHours(0, 0, 0, 0);
     var visibleCount = 0;
 
-    // Determine date threshold
+    // Determine date threshold (midnight-aligned for consistent day boundaries)
     var dateThreshold = null;
     if (filters.timePeriod === 'week') {
-      dateThreshold = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      dateThreshold = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
     } else if (filters.timePeriod === 'month') {
-      dateThreshold = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      dateThreshold = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000);
     } else if (filters.timePeriod === '3months') {
-      dateThreshold = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      dateThreshold = new Date(now.getTime() - 89 * 24 * 60 * 60 * 1000);
     }
 
     var cardArray = Array.prototype.slice.call(cards);
