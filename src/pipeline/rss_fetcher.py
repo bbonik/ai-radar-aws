@@ -18,6 +18,9 @@ from src.shared.models import RSSItem
 # Regex to strip HTML tags from description text
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
+# Regex to extract href URLs from <a> tags
+_HREF_RE = re.compile(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>', re.IGNORECASE)
+
 
 class RSSFetcher:
     """Fetches and parses the AWS 'What's New' RSS feed.
@@ -116,9 +119,20 @@ class RSSFetcher:
 
     @staticmethod
     def _clean_description(raw: str) -> str:
-        """Clean HTML entities and strip HTML tags from description text."""
+        """Clean HTML entities and strip HTML tags from description text.
+
+        Preserves URLs from <a href="..."> tags by appending them to the
+        text before stripping HTML. This ensures blogpost/doc links are
+        available for downstream processing (importance scoring, research).
+        """
         # Unescape HTML entities (e.g., &amp; -> &, &lt; -> <)
         text = html.unescape(raw)
+        # Extract href URLs from <a> tags before stripping
+        href_urls = _HREF_RE.findall(text)
         # Strip HTML tags
-        text = _HTML_TAG_RE.sub("", text)
-        return text.strip()
+        text = _HTML_TAG_RE.sub("", text).strip()
+        # Append extracted URLs that aren't already visible in the text
+        for url in href_urls:
+            if url not in text:
+                text += "\n" + url
+        return text

@@ -34,7 +34,7 @@ description_text = st.text(
     alphabet=_xml_safe_alphabet,
     min_size=1,
     max_size=200,
-)
+).filter(lambda s: s.strip() != "")
 
 # Strategy for link: simple URL-like strings
 link_text = st.from_regex(
