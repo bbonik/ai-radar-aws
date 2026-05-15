@@ -149,6 +149,13 @@ class Tagger:
         if "transform" in title_lower and "aws-transform" not in tags.services:
             tags.services.append("aws-transform")
 
+        # Rule 3: Deduplicate parent/child services — if the more specific
+        # service is present, remove the generic parent
+        if "bedrock-agentcore" in tags.services and "bedrock" in tags.services:
+            tags.services.remove("bedrock")
+        if "sagemaker-ai" in tags.services and "sagemaker" in tags.services:
+            tags.services.remove("sagemaker")
+
         return tags
 
     def _invoke_bedrock(self, prompt: str, announcement_link: str) -> str:
