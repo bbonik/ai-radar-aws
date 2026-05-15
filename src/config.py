@@ -46,7 +46,7 @@ class Config:
     llm_c_inference_profile_name: str = "ai-radar-tagger"
 
     # Importance Scoring
-    service_points_high: int = 3      # Bedrock, Bedrock AgentCore, SageMaker AI
+    service_points_high: int = 4      # Bedrock, Bedrock AgentCore, SageMaker AI
     service_points_medium: int = 2    # SageMaker, JumpStart, HyperPod, Unified Studio, Kiro, Quick/QuickSight
     service_points_base: int = 1      # All other relevant services (Lambda, OpenSearch, etc.)
     blogpost_points: int = 3          # Points for having blogpost links
