@@ -71,6 +71,7 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the AWS "What's New" R
 │   └── stack.py                   # Full stack definition
 ├── scripts/                         # Utility scripts
 │   ├── analytics_report.py        # Generate analytics CSV report via Athena
+│   ├── pipeline_health.py         # Pipeline health report (daily run status)
 │   ├── retag_announcements.py     # Retroactively tag existing announcements
 │   ├── reclassify_announcements.py # Recompute importance scores
 │   ├── compute_geo_relevance.py   # Backfill geographic relevance badges
