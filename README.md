@@ -298,3 +298,9 @@ mypy src/
 ## 📄 License
 
 MIT
+
+---
+
+<p align="center">
+  Built with <a href="https://kiro.dev/">Kiro</a> — see <code>.kiro/specs/</code> for the full requirements → design → tasks spec that guided development.
+</p>
