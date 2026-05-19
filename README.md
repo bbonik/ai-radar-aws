@@ -1,8 +1,42 @@
-# AI Radar AWS
+<p align="center">
+  <img src="images/logo-cropped.png" alt="AI Radar AWS" width="120">
+</p>
+
+<h1 align="center">AI Radar AWS</h1>
+
+<p align="center">
+  <em>AWS AI/ML news — curated, researched, explained</em>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.11+-blue" alt="Python">
+  <img src="https://img.shields.io/badge/AWS-CDK-orange" alt="CDK">
+  <img src="https://img.shields.io/badge/Amazon-Bedrock-purple" alt="Bedrock">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+</p>
+
+---
 
 Automated AWS AI/ML/GenAI news curation platform. Fetches the [AWS "What's New" RSS feed](https://aws.amazon.com/new/) daily, filters for AI relevance, classifies importance, assigns taxonomy tags, generates LLM-powered reports with Mermaid diagrams via Amazon Bedrock, and publishes a static website via CloudFront.
 
-## Architecture
+<p align="center">
+  <img src="images/screenshot1.png" alt="AI Radar AWS - Main Page" width="700">
+</p>
+
+<p align="center">
+  <img src="images/mermaid.png" alt="AI Radar AWS - Visual Summary Example" width="500">
+</p>
+
+## ✨ Key Highlights
+
+- **Fully automated** — runs daily, no manual curation needed
+- **LLM-powered analysis** — Claude Sonnet, Opus, and Haiku for reports, diagrams, and tagging
+- **Research-backed** — follows blog post links and reads documentation for deeper context
+- **5-star importance scoring** — point-based system with geographic preference
+- **Geographic relevance** — badges show whether announcements are available in your region
+- **One-command deploy** — `./deploy.sh` sets up the entire stack from scratch
+
+## 🏗️ Architecture
 
 ```
                                     ┌─────────────────────────────────────┐
@@ -90,7 +124,7 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the [AWS "What's New" 
 └── requirements-dev.txt             # Development dependencies
 ```
 
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
@@ -110,7 +144,7 @@ cd ai-radar-aws
 
 That's it. Two commands from zero to a running website.
 
-## Scripts Reference
+## 📋 Scripts Reference
 
 | Script | Purpose | When to Use |
 |--------|---------|-------------|
@@ -149,7 +183,7 @@ This invokes the pipeline synchronously and shows:
 
 The website is automatically rebuilt when the pipeline finishes. Hard-refresh (Cmd+Shift+R) after ~1-2 minutes to see new announcements.
 
-## How It Works
+## ⚙️ How It Works
 
 1. **EventBridge** triggers Lambda 1 daily at 22:00 UTC
 2. **RSS Fetcher** retrieves the AWS "What's New" feed (100 items)
@@ -165,7 +199,7 @@ The website is automatically rebuilt when the pipeline finishes. Hard-refresh (C
 12. **Lambda 2** rebuilds the static website from CSV data
 13. **CloudFront** serves the site with WAF protection and access logging
 
-## Website Features
+## 🌐 Website Features
 
 - **Faceted filtering** — clickable tag chips grouped by dimension (Services, Type, Concepts)
 - **Time filtering** — All / Last Week / Last Month / Last 3 Months
@@ -178,7 +212,7 @@ The website is automatically rebuilt when the pipeline finishes. Hard-refresh (C
 - **About modal** — Project methodology explanation
 - **Analytics** — Client-side event tracking (pageviews, clicks, filter usage)
 
-## Analytics
+## 📊 Analytics
 
 The site tracks usage via two mechanisms:
 - **CloudFront access logs** → S3 (page views, unique IPs, geographic data)
@@ -190,7 +224,7 @@ python scripts/analytics_report.py --days 30 --output report.csv  # Save to file
 python scripts/analytics_report.py --days 30                       # Print to stdout (no file created)
 ```
 
-## Configuration
+## 🔧 Configuration
 
 All tunable parameters live in `src/config.py`:
 - AWS region and schedule (daily at 22:00 UTC)
@@ -222,7 +256,7 @@ Prerequisites:
 
 If these values are absent, the stack deploys with the default CloudFront URL.
 
-## Estimated Monthly Cost
+## 💰 Estimated Monthly Cost
 
 Assumptions: ~7 new AI/ML announcements per week (~30/month), low website traffic (<10K page views/month).
 
@@ -245,7 +279,7 @@ The dominant cost is **WAF** ($5/month for the Web ACL + $1/month per rule). Wit
 
 > **Note**: Bedrock pricing varies by model and region. The estimates above use approximate on-demand pricing for the global inference profiles. Actual costs may differ based on token counts and regional pricing.
 
-## Development
+## 🛠️ Development
 
 ```bash
 # Run all tests
@@ -261,6 +295,6 @@ black src/ tests/
 mypy src/
 ```
 
-## License
+## 📄 License
 
 MIT
