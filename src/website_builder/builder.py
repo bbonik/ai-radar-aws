@@ -2562,40 +2562,91 @@ REPORT_TEMPLATE = """\
         <h2>AI Radar <span>AWS</span></h2>
         <p class="about-tagline">AWS AI/ML news &mdash; curated, researched, explained</p>
       </div>
-      <p>An automated intelligence platform that curates, researches, and analyzes AWS AI/ML/GenAI announcements daily. Every report is backed by real research — the system reads linked blog posts and documentation to provide accurate, in-depth analysis.</p>
 
-      <h3>How Each Report Is Generated</h3>
-      <ol>
-        <li><strong>Collection</strong> — Daily monitoring of the AWS "What's New" RSS feed</li>
-        <li><strong>Filtering</strong> — AI-powered relevance detection for AI/ML/GenAI topics</li>
-        <li><strong>Taxonomy Tagging</strong> — LLM-based classification across 5 dimensions (services, type, concepts, use cases, providers)</li>
-        <li><strong>Importance Scoring</strong> — Point-based system with tag bonuses (1-5 stars)</li>
-        <li><strong>Research Phase</strong> — Follows links to blog posts and documentation, extracting technical details and context</li>
-        <li><strong>Report Generation</strong> — Claude Sonnet produces structured 6-section analysis using research context</li>
-        <li><strong>Visual Summarys</strong> — Claude Opus generates Mermaid diagrams for high-importance items</li>
-        <li><strong>Publishing</strong> — Static website rebuilt and deployed via CloudFront</li>
-      </ol>
-
-      <h3>Features</h3>
-      <ul>
-        <li>Faceted filtering by service, type, concept, and more</li>
-        <li>Multi-dimensional taxonomy with 80+ tags across 5 dimensions</li>
-        <li>Timeline visualization of announcement volume</li>
-        <li>PDF export for offline reading</li>
-        <li>Mermaid visual summaries for key announcements</li>
-        <li>Daily automated updates — no manual curation</li>
-      </ul>
-
-      <div class="highlight-box">
-        <strong>What makes this different:</strong> Each report involves a dedicated research phase where the system reads linked blog posts and AWS documentation pages. This produces analysis that goes beyond the original announcement text — capturing technical details, integration patterns, and practical implications.
+      <div class="about-tabs">
+        <button class="about-tab active" onclick="switchAboutTab('overview')">Overview</button>
+        <button class="about-tab" onclick="switchAboutTab('scoring')">Scoring &amp; Geography</button>
       </div>
 
-      <h3>Technology</h3>
-      <p>Built with Python, AWS Lambda, Amazon Bedrock (Claude Sonnet 4.6, Opus 4.6, Haiku 4.5), S3, CloudFront, WAF, EventBridge, and CDK.</p>
+      <div class="about-tab-content active" id="about-tab-overview">
+        <p>An automated intelligence platform that curates, researches, and analyzes AWS AI/ML/GenAI announcements daily. Every report is backed by real research — the system reads linked blog posts and documentation to provide accurate, in-depth analysis.</p>
 
-      <h3>Open Source</h3>
-      <p>This project is open source. Fork it, customize it for your needs, and deploy your own instance.<br>
-      <a href="https://github.com/bbonik/ai-radar-aws" target="_blank" rel="noopener noreferrer">&#x1F4E6; github.com/bbonik/ai-radar-aws</a></p>
+        <h3>How Each Report Is Generated</h3>
+        <ol>
+          <li><strong>Collection</strong> — Daily monitoring of the AWS "What's New" RSS feed</li>
+          <li><strong>Filtering</strong> — AI-powered relevance detection for AI/ML/GenAI topics</li>
+          <li><strong>Taxonomy Tagging</strong> — LLM-based classification across 6 dimensions</li>
+          <li><strong>Importance Scoring</strong> — Point-based system with tag bonuses (1-5 stars)</li>
+          <li><strong>Research Phase</strong> — Follows links to blog posts and documentation</li>
+          <li><strong>Report Generation</strong> — Claude Sonnet produces structured 6-section analysis</li>
+          <li><strong>Visual Summary</strong> — Claude Opus generates Mermaid diagrams for key items</li>
+          <li><strong>Publishing</strong> — Static website rebuilt and deployed via CloudFront</li>
+        </ol>
+
+        <h3>Features</h3>
+        <ul>
+          <li>Faceted filtering by service, type, concept, and more</li>
+          <li>Multi-dimensional taxonomy with 80+ tags across 6 dimensions</li>
+          <li>Geographic relevance badges (APJ / Global)</li>
+          <li>Timeline visualization of announcement volume</li>
+          <li>PDF export for offline reading</li>
+          <li>Mermaid visual summaries for key announcements</li>
+          <li>Daily automated updates — no manual curation</li>
+        </ul>
+
+        <div class="highlight-box">
+          <strong>What makes this different:</strong> Each report involves a dedicated research phase where the system reads linked blog posts and AWS documentation pages. This produces analysis that goes beyond the original announcement text.
+        </div>
+
+        <h3>Technology</h3>
+        <p>Built with Python, AWS Lambda, Amazon Bedrock (Claude Sonnet 4.6, Opus 4.6, Haiku 4.5), S3, CloudFront, WAF, EventBridge, and CDK.</p>
+
+        <h3>Open Source</h3>
+        <p>This project is open source. Fork it, customize it for your needs, and deploy your own instance.<br>
+        <a href="https://github.com/bbonik/ai-radar-aws" target="_blank" rel="noopener noreferrer">&#x1F4E6; github.com/bbonik/ai-radar-aws</a></p>
+      </div>
+
+      <div class="about-tab-content" id="about-tab-scoring">
+        <h3>How Importance Scoring Works</h3>
+        <p>Each announcement receives a point score based on multiple factors. The total score maps to a 1-5 star rating:</p>
+
+        <div class="star-scale">
+          <span class="star-scale-item" style="border-left: 3px solid #9e9e9e;">1★ &lt; 2 pts</span>
+          <span class="star-scale-item" style="border-left: 3px solid #2476F9;">2★ &ge; 2 pts</span>
+          <span class="star-scale-item" style="border-left: 3px solid #24F93D;">3★ &ge; 3.5 pts</span>
+          <span class="star-scale-item" style="border-left: 3px solid #f9a825;">4★ &ge; 5 pts</span>
+          <span class="star-scale-item" style="border-left: 3px solid #f924e1;">5★ &ge; 6.5 pts</span>
+        </div>
+
+        <h3>Point Breakdown</h3>
+        <table class="scoring-table">
+          <thead><tr><th>Factor</th><th>Points</th><th>When</th></tr></thead>
+          <tbody>
+            <tr><td>Core AI service (Bedrock, AgentCore, SageMaker AI)</td><td class="pts-pos">+4</td><td>Service named in title</td></tr>
+            <tr><td>Key AI service (SageMaker, Kiro, QuickSight)</td><td class="pts-pos">+2</td><td>Service named in title</td></tr>
+            <tr><td>Other AI-related service</td><td class="pts-pos">+1</td><td>Default</td></tr>
+            <tr><td>Has blog post / documentation link</td><td class="pts-pos">+3</td><td>External link in announcement</td></tr>
+            <tr><td>Announcement length</td><td class="pts-pos">+0-2</td><td>~0.5 pts per 100 words</td></tr>
+            <tr><td>New model announcement</td><td class="pts-pos">+1</td><td>Tagged as "new-model"</td></tr>
+            <tr><td>Anthropic / OpenAI provider</td><td class="pts-pos">+2</td><td>Provider explicitly mentioned</td></tr>
+            <tr><td>Region expansion to APJ</td><td class="pts-pos">+1</td><td>Expands to Asia Pacific</td></tr>
+            <tr><td>Region expansion (non-APJ only)</td><td class="pts-neg">-1.5</td><td>Only expands to other regions</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Geographic Relevance Badges</h3>
+        <p>Each announcement card shows a small badge indicating whether the feature is available in your region:</p>
+
+        <div class="geo-legend">
+          <div class="geo-legend-item"><span class="geo-badge geo-local">&#127759; APJ</span> Confirmed available in Asia Pacific</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-global">&#127760; Global</span> Available in all regions (includes APJ)</div>
+          <div class="geo-legend-item"><span style="color:var(--aws-text-secondary);">No badge</span> Not available in APJ, or region unknown</div>
+        </div>
+
+        <div class="highlight-box">
+          <strong>How geography is detected:</strong> An LLM analyzes each announcement to determine geographic availability. If the text mentions Asia Pacific regions (Tokyo, Singapore, Sydney, etc.), it gets the APJ badge. If it says "all regions" or is a new feature on a globally-available service, it gets the Global badge.
+        </div>
+      </div>
     </div>
   </div>
 
