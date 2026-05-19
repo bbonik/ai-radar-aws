@@ -81,9 +81,7 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the [AWS "What's New" 
 ├── tests/                           # Tests (pytest + hypothesis)
 ├── docs/                            # Design documents and analysis
 │   ├── taxonomy-analysis.md       # Multi-dimensional tagging taxonomy design
-│   ├── scalability-analysis.md    # Growth projections and migration options
-│   ├── analytics-analysis.md     # Website analytics implementation options
-│   └── security-analysis.md      # Cybersecurity threat model and mitigations
+│   └── mermaid-style-guide.md    # Visual summary standardization rules
 ├── deploy.sh                        # One-command full deployment
 ├── rebuild-site.sh                  # Quick redeploy + website rebuild
 ├── CHANGELOG.md                     # Issue tracking and feature log
