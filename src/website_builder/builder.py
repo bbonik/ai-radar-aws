@@ -2408,6 +2408,10 @@ INDEX_TEMPLATE = """\
 
         <h3>Technology</h3>
         <p>Built with Python, AWS Lambda, Amazon Bedrock (Claude Sonnet 4.6, Opus 4.6, Haiku 4.5), S3, CloudFront, WAF, EventBridge, and CDK.</p>
+
+        <h3>Open Source</h3>
+        <p>This project is open source. Fork it, customize it for your needs, and deploy your own instance.<br>
+        <a href="https://github.com/bbonik/ai-radar-aws" target="_blank" rel="noopener noreferrer">&#x1F4E6; github.com/bbonik/ai-radar-aws</a></p>
       </div>
 
       <div class="about-tab-content" id="about-tab-scoring">
@@ -2588,6 +2592,10 @@ REPORT_TEMPLATE = """\
 
       <h3>Technology</h3>
       <p>Built with Python, AWS Lambda, Amazon Bedrock (Claude Sonnet 4.6, Opus 4.6, Haiku 4.5), S3, CloudFront, WAF, EventBridge, and CDK.</p>
+
+      <h3>Open Source</h3>
+      <p>This project is open source. Fork it, customize it for your needs, and deploy your own instance.<br>
+      <a href="https://github.com/bbonik/ai-radar-aws" target="_blank" rel="noopener noreferrer">&#x1F4E6; github.com/bbonik/ai-radar-aws</a></p>
     </div>
   </div>
 
