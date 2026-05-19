@@ -23,6 +23,9 @@
     "@aws-cdk/core:target-partitions": [
       "aws",
       "aws-cn"
-    ]
+    ],
+    "custom_domain": "ai-radar.vonikakv.people.aws.dev",
+    "certificate_arn": "arn:aws:acm:us-east-1:482414474587:certificate/bb499078-5da1-4a9f-86a7-ba133414d37d",
+    "hosted_zone_id": "Z05825673RBJYYG1X25I4"
   }
 }

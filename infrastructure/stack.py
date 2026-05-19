@@ -23,6 +23,7 @@ from aws_cdk import (
     Stack,
     aws_apigatewayv2 as apigwv2,
     aws_budgets as budgets,
+    aws_certificatemanager as acm,
     aws_cloudfront as cloudfront,
     aws_cloudfront_origins as origins,
     aws_cloudwatch as cloudwatch,
@@ -30,6 +31,8 @@ from aws_cdk import (
     aws_events_targets as targets,
     aws_iam as iam,
     aws_lambda as lambda_,
+    aws_route53 as route53,
+    aws_route53_targets as route53_targets,
     aws_s3 as s3,
     aws_wafv2 as wafv2,
     CfnResource,
@@ -276,23 +279,55 @@ class AiRadarAwsStack(Stack):
 
         # ─── CloudFront Distribution with OAC ─────────────────────────────
         # S3 bucket accessible only via CloudFront
-        self.distribution = cloudfront.Distribution(
-            self,
-            "WebsiteDistribution",
-            default_behavior=cloudfront.BehaviorOptions(
-                origin=origins.S3Origin(
-                    self.website_bucket,
-                ),
+        # Optional custom domain via CDK context (set in cdk.json):
+        #   custom_domain: "your-site.example.com"
+        #   certificate_arn: "arn:aws:acm:us-east-1:...:certificate/..."
+        #   hosted_zone_id: "Z0123456789..."
+        custom_domain = self.node.try_get_context("custom_domain")
+        certificate_arn = self.node.try_get_context("certificate_arn")
+        hosted_zone_id = self.node.try_get_context("hosted_zone_id")
+
+        # Build distribution kwargs (conditionally add domain/certificate)
+        distribution_kwargs = {
+            "default_behavior": cloudfront.BehaviorOptions(
+                origin=origins.S3Origin(self.website_bucket),
                 viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                 response_headers_policy=self.response_headers_policy,
             ),
-            default_root_object="index.html",
-            minimum_protocol_version=cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
-            web_acl_id=self.waf_web_acl.attr_arn,
-            enable_logging=True,
-            log_bucket=self.logs_bucket,
-            log_file_prefix="cloudfront/",
+            "default_root_object": "index.html",
+            "minimum_protocol_version": cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
+            "web_acl_id": self.waf_web_acl.attr_arn,
+            "enable_logging": True,
+            "log_bucket": self.logs_bucket,
+            "log_file_prefix": "cloudfront/",
+        }
+
+        if custom_domain and certificate_arn:
+            certificate = acm.Certificate.from_certificate_arn(
+                self, "CustomDomainCert", certificate_arn
+            )
+            distribution_kwargs["domain_names"] = [custom_domain]
+            distribution_kwargs["certificate"] = certificate
+
+        self.distribution = cloudfront.Distribution(
+            self, "WebsiteDistribution", **distribution_kwargs
         )
+
+        # Optional: Route 53 alias record for custom domain
+        if custom_domain and hosted_zone_id:
+            hosted_zone = route53.HostedZone.from_hosted_zone_attributes(
+                self, "CustomDomainZone",
+                hosted_zone_id=hosted_zone_id,
+                zone_name=".".join(custom_domain.split(".")[1:]),  # e.g., "vonikakv.people.aws.dev"
+            )
+            route53.ARecord(
+                self, "CustomDomainRecord",
+                zone=hosted_zone,
+                record_name=custom_domain,
+                target=route53.RecordTarget.from_alias(
+                    route53_targets.CloudFrontTarget(self.distribution)
+                ),
+            )
 
         # Set the CloudFront distribution ID on the website builder lambda
         self.website_builder_lambda.add_environment(
@@ -532,7 +567,8 @@ class AiRadarAwsStack(Stack):
             name="ai-radar-analytics-api",
             protocol_type="HTTP",
             cors_configuration=apigwv2.CfnApi.CorsProperty(
-                allow_origins=[f"https://{self.distribution.distribution_domain_name}"],
+                allow_origins=[f"https://{self.distribution.distribution_domain_name}"]
+                + ([f"https://{custom_domain}"] if custom_domain else []),
                 allow_methods=["POST", "OPTIONS"],
                 allow_headers=["Content-Type"],
             ),
@@ -606,7 +642,7 @@ class AiRadarAwsStack(Stack):
         CfnOutput(
             self,
             "WebsiteUrl",
-            value=f"https://{self.distribution.distribution_domain_name}",
+            value=f"https://{custom_domain}" if custom_domain else f"https://{self.distribution.distribution_domain_name}",
             description="AI Radar AWS website URL",
         )
         CfnOutput(

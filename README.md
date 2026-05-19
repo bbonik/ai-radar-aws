@@ -204,6 +204,26 @@ All tunable parameters live in `src/config.py`:
 
 No secrets in the repository — all credentials come from IAM roles at runtime.
 
+### Custom Domain (Optional)
+
+To use a custom domain instead of the CloudFront URL, add these to the `context` section of `cdk.json`:
+
+```json
+{
+  "context": {
+    "custom_domain": "your-site.example.com",
+    "certificate_arn": "arn:aws:acm:us-east-1:ACCOUNT:certificate/ID",
+    "hosted_zone_id": "Z0123456789..."
+  }
+}
+```
+
+Prerequisites:
+- An ACM certificate (in us-east-1) for your domain, already validated
+- A Route 53 hosted zone for the parent domain
+
+If these values are absent, the stack deploys with the default CloudFront URL.
+
 ## Estimated Monthly Cost
 
 Assumptions: ~7 new AI/ML announcements per week (~30/month), low website traffic (<10K page views/month).
