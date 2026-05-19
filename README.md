@@ -159,13 +159,13 @@ The website is automatically rebuilt when the pipeline finishes. Hard-refresh (C
 4. **Relevance Filter** applies regex patterns for AI/ML/GenAI keywords
 5. **Taxonomy Tagger** (Haiku 4.5) assigns multi-dimensional tags across 6 dimensions (services from title only, types/concepts/use_cases/providers from full text, geo_availability via LLM)
 6. **Importance Classifier** computes a point score → 1-5 stars (uses tags + geographic preference for scoring)
-7. **Geographic Relevance** hybrid detection: APJ keyword match (authoritative) + LLM geo_availability + keyword fallback
-7. **Research Agent** follows blogpost/doc links for additional context
-8. **Report Generator** (Sonnet 4.6) produces structured 6-section reports + card summary
-9. **Graph Generator** (Opus 4.6) creates Mermaid visual summaries (2-5 star only)
-10. **Storage Manager** appends results to CSV in S3
-11. **Lambda 2** rebuilds the static website from CSV data
-12. **CloudFront** serves the site with WAF protection and access logging
+7. **Geographic Relevance** hybrid detection: preferred geography keyword match (authoritative) + LLM geo_availability + keyword fallback
+8. **Research Agent** follows blogpost/doc links for additional context
+9. **Report Generator** (Sonnet 4.6) produces structured 6-section reports + card summary
+10. **Graph Generator** (Opus 4.6) creates Mermaid visual summaries (2-5 star only)
+11. **Storage Manager** appends results to CSV in S3
+12. **Lambda 2** rebuilds the static website from CSV data
+13. **CloudFront** serves the site with WAF protection and access logging
 
 ## Website Features
 
@@ -173,7 +173,7 @@ The website is automatically rebuilt when the pipeline finishes. Hard-refresh (C
 - **Time filtering** — All / Last Week / Last Month / Last 3 Months
 - **Sort** — Newest first or Most important first
 - **Taxonomy tags** — 5 dimensions: Services, Type, Concepts, Use Cases, Providers
-- **Geographic relevance badges** — 🌏 APJ (confirmed in your region) or 🌐 Global (available everywhere)
+- **Geographic relevance badges** — shows whether announcements are available in your preferred geography (configurable: APJ, EMEA, Americas, or Global)
 - **Report pages** — 6 structured sections with bullet points + Mermaid visual summaries
 - **PDF export** — Client-side PDF generation via html2pdf.js
 - **Timeline chart** — Stacked bar chart showing announcement volume over time (auto-aggregates to weekly when >90 days)
@@ -219,7 +219,7 @@ To use a custom domain instead of the CloudFront URL, add these to the `context`
 ```
 
 Prerequisites:
-- An ACM certificate (in us-east-1) for your domain, already validated
+- An ACM certificate for your domain, already validated (must be in **us-east-1** regardless of your stack's region — this is a CloudFront requirement)
 - A Route 53 hosted zone for the parent domain
 
 If these values are absent, the stack deploys with the default CloudFront URL.
@@ -239,7 +239,7 @@ Assumptions: ~7 new AI/ML announcements per week (~30/month), low website traffi
 | **WAF** | 1 Web ACL + 2 rules | ~$6.00 |
 | **API Gateway** (analytics) | <10K requests | ~$0.01 |
 | **EventBridge** | 1 rule, 30 invocations | ~$0.00 |
-| **CloudWatch** (logs + alarms) | 5 alarms, minimal logs | ~$0.50 |
+| **CloudWatch** (logs + alarms) | 6 alarms, minimal logs | ~$0.50 |
 | | | |
 | **Total** | | **~$11/month** |
 
