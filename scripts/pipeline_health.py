@@ -36,6 +36,7 @@ def main():
     print()
 
     # Use filter_log_events to find pipeline completion summaries
+    # Query for successful pipeline completions
     try:
         paginator = logs.get_paginator("filter_log_events")
         pages = paginator.paginate(
@@ -52,13 +53,34 @@ def main():
     for page in pages:
         for event in page.get("events", []):
             msg = event.get("message", "").strip()
-            # Parse the JSON log entry
             try:
                 data = json.loads(msg)
                 if data.get("message") == "Pipeline run complete":
                     runs.append(data)
             except json.JSONDecodeError:
                 continue
+
+    # Also query for crashed runs (unhandled exceptions)
+    try:
+        crash_pages = paginator.paginate(
+            logGroupName=LOG_GROUP,
+            startTime=start_time,
+            endTime=end_time,
+            filterPattern='"Pipeline run failed with unhandled exception"',
+        )
+        for page in crash_pages:
+            for event in page.get("events", []):
+                msg = event.get("message", "").strip()
+                try:
+                    data = json.loads(msg)
+                    if "unhandled exception" in data.get("message", ""):
+                        # Mark as a crash
+                        data["_crashed"] = True
+                        runs.append(data)
+                except json.JSONDecodeError:
+                    continue
+    except Exception:
+        pass  # Non-fatal — just means we can't detect crashes
 
     if not runs:
         print("No pipeline runs found in this period.")
@@ -83,6 +105,17 @@ def main():
         day_runs = runs_by_date[date]
         for run in day_runs:
             total_runs += 1
+
+            # Check if this was a crash (unhandled exception)
+            if run.get("_crashed"):
+                total_failed_runs += 1
+                ts = run.get("timestamp", "")[:19]
+                error_type = run.get("error_type", "Unknown")
+                error_msg = run.get("error_message", "Unknown error")[:100]
+                print(f"  {ts}  \033[31m💥 CRASHED\033[0m")
+                print(f"           \033[31m└─ {error_type}: {error_msg}\033[0m")
+                continue
+
             summary = run.get("summary", {})
             fetched = summary.get("total_fetched", "?")
             deduped = summary.get("total_deduplicated", "?")
