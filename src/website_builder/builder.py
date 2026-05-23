@@ -19,7 +19,11 @@ import io
 import json
 import os
 import re
+import sys
 from collections import defaultdict
+
+# Increase CSV field size limit to handle large descriptions/mermaid graphs
+csv.field_size_limit(sys.maxsize)
 
 from src.config import Config
 from src.shared.logger import StructuredLogger

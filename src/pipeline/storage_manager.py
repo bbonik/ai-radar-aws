@@ -7,7 +7,11 @@ All S3 writes use server-side encryption (AES-256) and retry with exponential ba
 
 import csv
 import io
+import sys
 import time
+
+# Increase CSV field size limit to handle large descriptions/mermaid graphs
+csv.field_size_limit(sys.maxsize)
 
 from src.config import Config
 from src.shared.logger import StructuredLogger
