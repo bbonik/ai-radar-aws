@@ -240,7 +240,8 @@ class TestSaveAnnouncement:
                 {"Error": {"Code": "InternalError", "Message": "Server error"}},
                 "PutObject",
             ),
-            None,  # Success on third attempt
+            None,  # Success on third attempt (CSV write)
+            None,  # Success for _append_link
         ]
 
         sm = StorageManager(config, mock_s3, logger, TEST_BUCKET)
@@ -268,7 +269,7 @@ class TestSaveAnnouncement:
         result = sm.save_announcement(announcement)
 
         assert result is True
-        assert mock_s3.put_object.call_count == 3
+        assert mock_s3.put_object.call_count == 4  # 2 failures + 1 CSV success + 1 links append
         # Exponential backoff: 1s, 2s
         assert mock_sleep.call_count == 2
         mock_sleep.assert_any_call(1)

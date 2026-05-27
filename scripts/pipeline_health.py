@@ -82,6 +82,45 @@ def main():
     except Exception:
         pass  # Non-fatal — just means we can't detect crashes
 
+    # Also detect Lambda runtime errors (OOM, timeout) from REPORT lines
+    try:
+        runtime_error_pages = paginator.paginate(
+            logGroupName=LOG_GROUP,
+            startTime=start_time,
+            endTime=end_time,
+            filterPattern='"Status: error"',
+        )
+        for page in runtime_error_pages:
+            for event in page.get("events", []):
+                msg = event.get("message", "").strip()
+                if "REPORT" in msg and "Status: error" in msg:
+                    # Extract error type and timestamp
+                    error_type = "Unknown"
+                    if "Runtime.OutOfMemory" in msg:
+                        error_type = "Out of Memory (OOM)"
+                    elif "Task timed out" in msg:
+                        error_type = "Timeout"
+                    elif "Error Type:" in msg:
+                        error_type = msg.split("Error Type:")[1].strip().split()[0]
+
+                    # Extract timestamp from the event
+                    event_ts = event.get("timestamp", 0)
+                    ts_str = datetime.fromtimestamp(event_ts / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+
+                    # Check if we already have a run entry for this timestamp (avoid duplicates)
+                    already_reported = any(
+                        r.get("timestamp", "")[:16] == ts_str[:16] for r in runs
+                    )
+                    if not already_reported:
+                        runs.append({
+                            "timestamp": ts_str,
+                            "_crashed": True,
+                            "error_type": "RuntimeError",
+                            "error_message": error_type,
+                        })
+    except Exception:
+        pass  # Non-fatal
+
     if not runs:
         print("No pipeline runs found in this period.")
         return

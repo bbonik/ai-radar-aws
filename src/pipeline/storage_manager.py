@@ -52,7 +52,9 @@ ERROR_CSV_COLUMNS = [
 ]
 
 # S3 key paths
+# S3 key paths
 ANNOUNCEMENTS_KEY = "database/announcements.csv"
+LINKS_KEY = "database/links.txt"
 ERRORS_KEY = "errors/failed_announcements.csv"
 
 # Retry configuration
@@ -79,9 +81,39 @@ class StorageManager:
     def load_existing_links(self) -> set[str]:
         """Load all previously stored announcement links from S3 for deduplication.
 
-        Returns a set of announcement link URLs. If the CSV file does not exist
-        yet (first run), returns an empty set.
+        Uses a lightweight links.txt file (one URL per line) instead of parsing
+        the full CSV. Falls back to CSV if links.txt doesn't exist yet (migration).
+
+        Returns a set of announcement link URLs. If neither file exists
+        (first run), returns an empty set.
         """
+        # Try the lightweight links file first
+        try:
+            response = self._s3.get_object(
+                Bucket=self._data_bucket,
+                Key=LINKS_KEY,
+            )
+            content = response["Body"].read().decode("utf-8")
+            links = {line.strip() for line in content.split("\n") if line.strip()}
+            self._logger.info(
+                "Loaded existing links from links.txt",
+                links_count=len(links),
+            )
+            return links
+        except Exception as exc:
+            error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+            if error_code not in ("NoSuchKey", "404"):
+                # Check for NoSuchKey via exception type
+                if not isinstance(exc, self._s3.exceptions.NoSuchKey):
+                    self._logger.error(
+                        "Failed to load links.txt",
+                        error_type=type(exc).__name__,
+                        error_message=str(exc),
+                    )
+                    raise
+
+        # Fallback: migrate from CSV (one-time, creates links.txt)
+        self._logger.info("links.txt not found, migrating from CSV...")
         try:
             response = self._s3.get_object(
                 Bucket=self._data_bucket,
@@ -90,32 +122,65 @@ class StorageManager:
             csv_content = response["Body"].read().decode("utf-8")
             reader = csv.DictReader(io.StringIO(csv_content))
             links = {row["link"] for row in reader if row.get("link")}
+
+            # Create the links.txt file for future use
+            self._save_links_file(links)
+
             self._logger.info(
-                "Loaded existing announcement links for deduplication",
+                "Migrated links from CSV to links.txt",
                 links_count=len(links),
             )
             return links
         except self._s3.exceptions.NoSuchKey:
-            self._logger.info(
-                "No existing announcements CSV found, starting fresh",
-            )
+            self._logger.info("No existing data found, starting fresh")
             return set()
         except Exception as exc:
-            # Handle the case where the bucket/key doesn't exist yet
             error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
             if error_code in ("NoSuchKey", "404"):
-                self._logger.info(
-                    "No existing announcements CSV found, starting fresh",
-                )
+                self._logger.info("No existing data found, starting fresh")
                 return set()
             self._logger.error(
-                "Failed to load existing links from S3",
+                "Failed to load existing links from CSV fallback",
                 error_type=type(exc).__name__,
                 error_message=str(exc),
-                bucket=self._data_bucket,
-                key=ANNOUNCEMENTS_KEY,
             )
             raise
+
+    def _save_links_file(self, links: set[str]) -> None:
+        """Write the full links set to S3 as a text file (one URL per line)."""
+        content = "\n".join(sorted(links))
+        self._s3.put_object(
+            Bucket=self._data_bucket,
+            Key=LINKS_KEY,
+            Body=content.encode("utf-8"),
+            ContentType="text/plain",
+            ServerSideEncryption="AES256",
+        )
+
+    def _append_link(self, link: str) -> None:
+        """Append a single link to the links.txt file."""
+        try:
+            # Read existing content
+            response = self._s3.get_object(
+                Bucket=self._data_bucket,
+                Key=LINKS_KEY,
+            )
+            existing = response["Body"].read().decode("utf-8")
+        except (self._s3.exceptions.NoSuchKey, Exception):
+            existing = ""
+
+        # Append the new link
+        if existing and not existing.endswith("\n"):
+            existing += "\n"
+        existing += link + "\n"
+
+        self._s3.put_object(
+            Bucket=self._data_bucket,
+            Key=LINKS_KEY,
+            Body=existing.encode("utf-8"),
+            ContentType="text/plain",
+            ServerSideEncryption="AES256",
+        )
 
     def save_announcement(self, announcement: ProcessedAnnouncement) -> bool:
         """Append a new announcement row to the CSV in S3.
@@ -139,6 +204,9 @@ class StorageManager:
 
                 # Upload the updated CSV
                 self._upload_csv(ANNOUNCEMENTS_KEY, updated_content)
+
+                # Also append to the lightweight links file for fast dedup
+                self._append_link(announcement.link)
 
                 self._logger.info(
                     "Announcement saved to S3",
