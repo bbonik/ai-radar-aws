@@ -164,6 +164,8 @@ That's it. Two commands from zero to a running website.
 | `python scripts/compute_geo_relevance.py` | Compute geographic relevance badges | After changing preferred geography |
 | `python scripts/pipeline_health.py` | Pipeline health report (daily run status) | Check if pipeline is running correctly |
 | `python scripts/pipeline_health.py --days 30` | Extended health report | Investigate historical failures |
+| `python scripts/backup.py` | Backup data CSV to local zip | Periodic disaster recovery backup |
+| `python scripts/backup.py --full` | Backup data + website files | Full backup including generated HTML |
 | `python scripts/analytics_report.py --days 30` | Generate analytics CSV | Check website usage metrics |
 
 ### Running the Pipeline Manually
