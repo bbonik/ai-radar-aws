@@ -79,3 +79,6 @@ coverage.xml
 
 # Type checking
 .mypy_cache/
+
+# Planning docs (not for public repo)
+docs/json-storage-migration.md

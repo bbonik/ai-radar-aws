@@ -317,42 +317,28 @@ class StorageManager:
     ) -> str:
         """Append a row to CSV content, adding headers if the file is new.
 
-        If the existing CSV is missing columns that the new row has,
-        the CSV is rewritten with the expanded header (backward-compatible schema evolution).
+        Uses the canonical column list. Does NOT attempt schema evolution
+        (rewriting existing rows) to avoid quote-escaping corruption.
         """
         output = io.StringIO()
 
         if existing_content:
-            # Check if existing header needs new columns
+            # Write existing content as-is
+            output.write(existing_content)
+            if not existing_content.endswith("\n"):
+                output.write("\n")
+
+            # Determine columns from the existing header
             first_line = existing_content.split("\n", 1)[0]
-            existing_columns = first_line.split(",")
+            # Use csv.reader to properly parse the header (handles quotes)
+            header_reader = csv.reader(io.StringIO(first_line))
+            existing_columns = next(header_reader)
 
-            # Detect new columns not in the existing header
-            new_columns = [c for c in columns if c not in existing_columns]
-
-            if new_columns:
-                # Schema evolution: rewrite CSV with expanded header
-                merged_columns = existing_columns + new_columns
-                reader = csv.DictReader(io.StringIO(existing_content))
-                writer = csv.DictWriter(output, fieldnames=merged_columns)
-                writer.writeheader()
-                for existing_row in reader:
-                    # Fill missing columns with empty string
-                    for col in new_columns:
-                        existing_row.setdefault(col, "")
-                    writer.writerow(existing_row)
-            else:
-                # No schema change — write existing content as-is
-                output.write(existing_content)
-                if not existing_content.endswith("\n"):
-                    output.write("\n")
-                merged_columns = existing_columns
-
-            # Append the new row using the (possibly expanded) columns
-            writer = csv.DictWriter(output, fieldnames=merged_columns)
+            # Append the new row using existing columns
+            writer = csv.DictWriter(output, fieldnames=existing_columns)
             writer.writerow(row)
         else:
-            # New file — write header row first
+            # New file — write header row first using canonical columns
             writer = csv.DictWriter(output, fieldnames=columns)
             writer.writeheader()
             writer.writerow(row)

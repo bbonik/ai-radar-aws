@@ -188,7 +188,7 @@ class AiRadarAwsStack(Stack):
                 ],
             ),
             timeout=Duration.minutes(10),
-            memory_size=2048,
+            memory_size=1024,
             environment={
                 "DATA_BUCKET_NAME": self.data_bucket.bucket_name,
                 "WEBSITE_BUCKET_NAME": self.website_bucket.bucket_name,
@@ -361,7 +361,7 @@ class AiRadarAwsStack(Stack):
                 ],
             ),
             timeout=Duration.minutes(15),
-            memory_size=2048,
+            memory_size=1024,
             environment={
                 "DATA_BUCKET_NAME": self.data_bucket.bucket_name,
                 "WEBSITE_BUILDER_FUNCTION_NAME": self.website_builder_lambda.function_name,
