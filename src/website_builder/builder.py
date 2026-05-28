@@ -2450,7 +2450,7 @@ INDEX_TEMPLATE = """\
         <ul>
           <li>Faceted filtering by service, type, concept, and more</li>
           <li>Multi-dimensional taxonomy with 80+ tags across 6 dimensions</li>
-          <li>Geographic relevance badges (APJ / Global)</li>
+          <li>Geographic availability badges (Global, APJ, EMEA, AMER) with filtering</li>
           <li>Timeline visualization of announcement volume</li>
           <li>PDF export for offline reading</li>
           <li>Mermaid visual summaries for key announcements</li>
@@ -2506,13 +2506,15 @@ INDEX_TEMPLATE = """\
         <p>Each announcement card shows a small badge indicating whether the feature is available in your region:</p>
 
         <div class="geo-legend">
-          <div class="geo-legend-item"><span class="geo-badge geo-local">&#127759; APJ</span> Confirmed available in Asia Pacific</div>
-          <div class="geo-legend-item"><span class="geo-badge geo-global">&#127760; Global</span> Available in all regions (includes APJ)</div>
-          <div class="geo-legend-item"><span style="color:var(--aws-text-secondary);">No badge</span> Not available in APJ, or region unknown</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-global">&#127760; Global</span> Available in all regions</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-region">&#127759; APJ</span> Asia Pacific</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-region">&#127757; EMEA</span> Europe / Middle East / Africa</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-region">&#127758; AMER</span> Americas (US, Canada, South America)</div>
+          <div class="geo-legend-item"><span style="color:var(--aws-text-secondary);">No badge</span> Geography unknown</div>
         </div>
 
         <div class="highlight-box">
-          <strong>How geography is detected:</strong> An LLM analyzes each announcement to determine geographic availability. If the text mentions Asia Pacific regions (Tokyo, Singapore, Sydney, etc.), it gets the APJ badge. If it says "all regions" or is a new feature on a globally-available service, it gets the Global badge.
+          <strong>How geography is detected:</strong> The system detects ALL geographies mentioned in each announcement. If the text mentions specific regions (Tokyo, Frankfurt, Oregon, etc.), the corresponding geography badges are shown. If it says "all regions" or is a new feature with no region specified, it gets the Global badge. Geography is also filterable — click a geo chip to see only announcements available in that region.
         </div>
       </div>
     </div>
@@ -2647,7 +2649,7 @@ REPORT_TEMPLATE = """\
         <ul>
           <li>Faceted filtering by service, type, concept, and more</li>
           <li>Multi-dimensional taxonomy with 80+ tags across 6 dimensions</li>
-          <li>Geographic relevance badges (APJ / Global)</li>
+          <li>Geographic availability badges (Global, APJ, EMEA, AMER) with filtering</li>
           <li>Timeline visualization of announcement volume</li>
           <li>PDF export for offline reading</li>
           <li>Mermaid visual summaries for key announcements</li>
@@ -2703,13 +2705,15 @@ REPORT_TEMPLATE = """\
         <p>Each announcement card shows a small badge indicating whether the feature is available in your region:</p>
 
         <div class="geo-legend">
-          <div class="geo-legend-item"><span class="geo-badge geo-local">&#127759; APJ</span> Confirmed available in Asia Pacific</div>
-          <div class="geo-legend-item"><span class="geo-badge geo-global">&#127760; Global</span> Available in all regions (includes APJ)</div>
-          <div class="geo-legend-item"><span style="color:var(--aws-text-secondary);">No badge</span> Not available in APJ, or region unknown</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-global">&#127760; Global</span> Available in all regions</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-region">&#127759; APJ</span> Asia Pacific</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-region">&#127757; EMEA</span> Europe / Middle East / Africa</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-region">&#127758; AMER</span> Americas (US, Canada, South America)</div>
+          <div class="geo-legend-item"><span style="color:var(--aws-text-secondary);">No badge</span> Geography unknown</div>
         </div>
 
         <div class="highlight-box">
-          <strong>How geography is detected:</strong> An LLM analyzes each announcement to determine geographic availability. If the text mentions Asia Pacific regions (Tokyo, Singapore, Sydney, etc.), it gets the APJ badge. If it says "all regions" or is a new feature on a globally-available service, it gets the Global badge.
+          <strong>How geography is detected:</strong> The system detects ALL geographies mentioned in each announcement. If the text mentions specific regions (Tokyo, Frankfurt, Oregon, etc.), the corresponding geography badges are shown. If it says "all regions" or is a new feature with no region specified, it gets the Global badge. Geography is also filterable — click a geo chip to see only announcements available in that region.
         </div>
       </div>
     </div>
