@@ -33,7 +33,7 @@ class AnnouncementTags:
     concepts: list[str] = field(default_factory=list)
     use_cases: list[str] = field(default_factory=list)
     providers: list[str] = field(default_factory=list)
-    geo_availability: str = ""  # "apj", "emea", "americas", "global", "unknown", or ""
+    geo_availability: list[str] = field(default_factory=list)  # ["apj", "emea", "americas", "global"]
 
     def all_tags(self) -> list[str]:
         """Return all tags as a flat list."""
@@ -57,13 +57,17 @@ class AnnouncementTags:
             return cls()
         try:
             d = json.loads(data)
+            # Handle backward compat: geo_availability might be a string from old data
+            geo = d.get("geo_availability", [])
+            if isinstance(geo, str):
+                geo = [geo] if geo and geo != "unknown" else []
             return cls(
                 services=d.get("services", []),
                 types=d.get("types", []),
                 concepts=d.get("concepts", []),
                 use_cases=d.get("use_cases", []),
                 providers=d.get("providers", []),
-                geo_availability=d.get("geo_availability", ""),
+                geo_availability=geo,
             )
         except (json.JSONDecodeError, TypeError):
             return cls()
@@ -116,7 +120,7 @@ class ProcessedAnnouncement:
     blogpost_links: list[str]
     first_detected: str  # ISO timestamp
     tags: AnnouncementTags = field(default_factory=AnnouncementTags)
-    geo_relevance: str = ""  # "local", "global", or "" (not relevant/unknown)
+    geo_relevance: str = ""  # Comma-separated geographies: "apj,emea" or "global" or ""
 
     def to_csv_row(self) -> dict:
         """Serialize to a flat dict matching the CSV schema columns."""

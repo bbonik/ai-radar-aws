@@ -242,63 +242,52 @@ Valid tags: anthropic, openai, meta, google, nvidia, mistral, cohere, stability,
 amazon, alibaba, community
 
 ### Dimension 6: Geographic Availability (geo_availability)
-Determine where this feature/service is available. Pick exactly ONE value.
+Determine ALL geographies where this feature/service is available. Return a LIST of applicable values.
 
-Valid values:
+Valid values (include all that apply):
 - "apj" — mentions Asia Pacific regions: ap-northeast-1 (Tokyo), ap-northeast-2 (Seoul), ap-northeast-3 (Osaka), ap-southeast-1 (Singapore), ap-southeast-2 (Sydney), ap-southeast-3 (Jakarta), ap-southeast-4 (Melbourne), ap-southeast-5 (Malaysia), ap-south-1 (Mumbai), ap-south-2 (Hyderabad), ap-east-1 (Hong Kong), ap-east-2 (Taipei)
 - "emea" — mentions Europe/Middle East/Africa regions: eu-west-1 (Ireland), eu-west-2 (London), eu-west-3 (Paris), eu-central-1 (Frankfurt), eu-central-2 (Zurich), eu-north-1 (Stockholm), eu-south-1 (Milan), me-south-1 (Bahrain), me-central-1 (UAE), af-south-1 (Cape Town), il-central-1 (Tel Aviv)
 - "americas" — mentions US/Canada/South America regions: us-east-1 (N. Virginia), us-east-2 (Ohio), us-west-1 (N. California), us-west-2 (Oregon), ca-central-1 (Canada), sa-east-1 (Sao Paulo), us-gov-east-1, us-gov-west-1 (GovCloud)
 - "global" — available broadly (see GA rules below)
-- "unknown" — cannot determine from the text
 
 Key concept — "Generally Available" (GA):
-- "Generally available" with NO specific region = launched everywhere the parent service exists → "global"
+- "Generally available" with NO specific region = launched everywhere → ["global"]
 - "Generally available IN [specific region]" = launched ONLY in that region → use that region's geography
 - This distinction is critical: "now generally available" ≠ "now generally available in us-east-1"
 
 Rules:
-- Explicit region mentioned → use that geography
-- "All regions" / "all supported regions" / "globally available" / "worldwide" → "global"
-- GA or new feature with NO region mentioned → "global"
-- If APJ and other regions are both mentioned → "apj" (preferred geography takes priority)
+- If "all regions" / "globally available" / "worldwide" → ["global"]
+- If GA or new feature with NO region mentioned → ["global"]
+- If specific regions mentioned → list ALL geographies that apply (e.g., Tokyo + Frankfurt → ["apj", "emea"])
+- If "global" applies, do NOT also list individual geographies — just ["global"]
+- If no geography can be determined → []
 
 ## Few-Shot Examples for geo_availability
 
 Example 1 — GA with no region (global):
 Title: "Amazon Bedrock Introduces Advanced Prompt Optimization Tool"
 Description: "Today we announce general availability of prompt optimization..."
-→ geo_availability: "global"
-Why: GA with no specific region = broadly available
+→ geo_availability: ["global"]
 
-Example 2 — GA in a specific region (not global):
+Example 2 — GA in a specific region:
 Title: "OpenAI Models on Amazon Bedrock in AWS GovCloud (US)"
 Description: "Models are now generally available in us-gov-west-1..."
-→ geo_availability: "americas"
-Why: "Generally available IN us-gov-west-1" = only that region
+→ geo_availability: ["americas"]
 
-Example 3 — Explicit APJ region:
-Title: "Amazon SageMaker AI expands to Asia Pacific (Sydney)"
-Description: "Customers in ap-southeast-2 can now access..."
-→ geo_availability: "apj"
-Why: Explicitly mentions an APJ region
+Example 3 — Multiple regions:
+Title: "Amazon Bedrock expands to new regions"
+Description: "Now available in Tokyo, Frankfurt, and Oregon..."
+→ geo_availability: ["apj", "emea", "americas"]
 
 Example 4 — "All regions" phrasing:
 Title: "Amazon Bedrock Guardrails supports multimodal content"
 Description: "Available in all AWS Regions where Bedrock is supported..."
-→ geo_availability: "global"
-Why: "All regions" = global
+→ geo_availability: ["global"]
 
-Example 5 — Multiple regions including APJ:
-Title: "Amazon Bedrock expands to new regions"
-Description: "Now available in Tokyo, Frankfurt, and Oregon..."
-→ geo_availability: "apj"
-Why: APJ (Tokyo) is mentioned → takes priority
-
-Example 6 — Region-specific to Americas only:
-Title: "New BI agents available through AWS Marketplace"
-Description: "Available in US East (N. Virginia)..."
-→ geo_availability: "americas"
-Why: Only available in a US region
+Example 5 — Single non-US region:
+Title: "Amazon SageMaker AI expands to Asia Pacific (Sydney)"
+Description: "Customers in ap-southeast-2 can now access..."
+→ geo_availability: ["apj"]
 
 ## Instructions
 - For services dimension: ONLY look at the TITLE to determine which AWS services to tag. Do NOT infer services from the description body.
@@ -306,7 +295,7 @@ Why: Only available in a US region
 - For providers dimension: only assign if a specific model provider is mentioned
 - If no tags clearly apply for a dimension, return an empty list for that dimension
 - If the announcement title mentions "AWS Transform", always include "aws-transform" in services
-- For geo_availability: pick exactly ONE value following the rules and examples above
+- For geo_availability: return a LIST of applicable geographies following the rules above
 - Return ONLY valid JSON with no additional text
 
 ## Output Format
@@ -318,7 +307,7 @@ Return a JSON object with exactly these keys:
   "concepts": [...],
   "use_cases": [...],
   "providers": [...],
-  "geo_availability": "global"
+  "geo_availability": ["global"]
 }}
 ```
 """)

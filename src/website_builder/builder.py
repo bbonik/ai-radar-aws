@@ -340,6 +340,7 @@ class WebsiteBuilder:
             "concepts": defaultdict(int),
             "use_cases": defaultdict(int),
             "providers": defaultdict(int),
+            "geography": defaultdict(int),
         }
         for a in announcements:
             for tag in a.tags.services:
@@ -352,6 +353,12 @@ class WebsiteBuilder:
                 tags_by_dimension["use_cases"][tag] += 1
             for tag in a.tags.providers:
                 tags_by_dimension["providers"][tag] += 1
+            # Geography from geo_relevance field
+            if a.geo_relevance:
+                for geo in a.geo_relevance.split(","):
+                    geo = geo.strip()
+                    if geo:
+                        tags_by_dimension["geography"][geo] += 1
 
         # Convert defaultdicts to regular dicts for JSON serialization
         tags_by_dimension_serializable = {
@@ -447,18 +454,30 @@ class WebsiteBuilder:
         all_tags = a.tags.all_tags()
         all_tags_attr = _sanitize_html(",".join(all_tags)) if all_tags else ""
 
-        # Geo relevance badge (bottom-right corner)
+        # Geo relevance badges (bottom-right corner)
         geo_badge_html = ""
-        if a.geo_relevance == "local":
-            geo_badge_html = '    <span class="geo-badge geo-local">\U0001f30f APJ</span>\n'
-        elif a.geo_relevance == "global":
-            geo_badge_html = '    <span class="geo-badge geo-global">\U0001f310 Global</span>\n'
+        if a.geo_relevance:
+            geos = a.geo_relevance.split(",")
+            badges = []
+            for geo in geos:
+                geo = geo.strip()
+                if geo == "global":
+                    badges.append('<span class="geo-badge geo-global">\U0001f310 Global</span>')
+                elif geo == "apj":
+                    badges.append('<span class="geo-badge geo-region">\U0001f30f APJ</span>')
+                elif geo == "emea":
+                    badges.append('<span class="geo-badge geo-region">\U0001f30d EMEA</span>')
+                elif geo == "americas":
+                    badges.append('<span class="geo-badge geo-region">\U0001f30e AMER</span>')
+            if badges:
+                geo_badge_html = '    ' + ' '.join(badges) + '\n'
 
         return (
             f'<article class="announcement-card" '
             f'data-date="{date_attr_safe}" '
             f'data-importance="{a.importance_level}" '
-            f'data-tags="{all_tags_attr}">\n'
+            f'data-tags="{all_tags_attr}" '
+            f'data-geo="{a.geo_relevance}">\n'
             f'  <div class="card-header">\n'
             f'    <span class="card-stars importance-{a.importance_level}">{stars}</span>\n'
             f'    <span class="card-date">{date_display}</span>\n'
@@ -467,7 +486,7 @@ class WebsiteBuilder:
             f'{tags_html}'
             f'  <p class="card-summary">{summary_safe}</p>\n'
             f'  <div class="card-footer">\n'
-            f'    <a href="reports/{slug}.html" class="card-link">Read full report &rarr;</a>\n'
+            f'    <a href="reports/{slug}.html" class="card-link">Full report &rarr;</a>\n'
             f'{geo_badge_html}'
             f'  </div>\n'
             f'</article>'
@@ -1033,7 +1052,7 @@ body {
   white-space: nowrap;
 }
 
-.geo-local {
+.geo-local, .geo-region {
   background: #e8f5e9;
   color: #2e7d32;
   border: 1px solid #a5d6a7;
@@ -1555,7 +1574,8 @@ JS_TEMPLATE = """\
       types: [],
       concepts: [],
       use_cases: [],
-      providers: []
+      providers: [],
+      geography: []
     }
   };
 
@@ -1719,7 +1739,7 @@ JS_TEMPLATE = """\
   function resetAllFilters() {
     filters.timePeriod = 'all';
     filters.sort = 'newest';
-    filters.selectedTags = { services: [], types: [], concepts: [], use_cases: [], providers: [] };
+    filters.selectedTags = { services: [], types: [], concepts: [], use_cases: [], providers: [], geography: [] };
 
     // Reset time chips
     var timeRow = document.getElementById('filter-time-row');
@@ -1800,7 +1820,7 @@ JS_TEMPLATE = """\
   }
 
   function findTagDimension(tag) {
-    var dims = ['services', 'types', 'concepts', 'use_cases', 'providers'];
+    var dims = ['services', 'types', 'concepts', 'use_cases', 'providers', 'geography'];
     for (var i = 0; i < dims.length; i++) {
       if (tagsByDimension[dims[i]] && tagsByDimension[dims[i]][tag] !== undefined) {
         return dims[i];
@@ -1861,6 +1881,19 @@ JS_TEMPLATE = """\
             }
           }
         }
+      }
+
+      // Geography filter: OR logic (show if card matches any selected geo)
+      if (visible && filters.selectedTags.geography && filters.selectedTags.geography.length > 0) {
+        var cardGeo = (card.getAttribute('data-geo') || '').split(',');
+        var geoMatch = false;
+        for (var g = 0; g < filters.selectedTags.geography.length; g++) {
+          if (cardGeo.indexOf(filters.selectedTags.geography[g]) !== -1) {
+            geoMatch = true;
+            break;
+          }
+        }
+        if (!geoMatch) visible = false;
       }
 
       card.style.display = visible ? '' : 'none';
@@ -2437,10 +2470,15 @@ INDEX_TEMPLATE = """\
             <tr><td>Core AI service (Bedrock, AgentCore, SageMaker AI)</td><td class="pts-pos">+4</td><td>Service named in title</td></tr>
             <tr><td>Key AI service (SageMaker, Kiro, QuickSight)</td><td class="pts-pos">+2</td><td>Service named in title</td></tr>
             <tr><td>Other AI-related service</td><td class="pts-pos">+1</td><td>Default</td></tr>
-            <tr><td>Has blog post / documentation link</td><td class="pts-pos">+3</td><td>External link in announcement</td></tr>
-            <tr><td>Announcement length</td><td class="pts-pos">+0-2</td><td>~0.5 pts per 100 words</td></tr>
-            <tr><td>New model announcement</td><td class="pts-pos">+1</td><td>Tagged as "new-model"</td></tr>
+            <tr><td>Blog post link</td><td class="pts-pos">+3</td><td>Link to aws.amazon.com/blogs/</td></tr>
+            <tr><td>GitHub samples link</td><td class="pts-pos">+2</td><td>Link to github.com/aws*</td></tr>
+            <tr><td>Documentation link</td><td class="pts-pos">+1</td><td>Link to docs.aws.amazon.com/</td></tr>
+            <tr><td>New model</td><td class="pts-pos">+1.5</td><td>Tagged as "new-model"</td></tr>
+            <tr><td>New service</td><td class="pts-pos">+1</td><td>Tagged as "new-service"</td></tr>
+            <tr><td>New feature</td><td class="pts-pos">+0.5</td><td>Tagged as "new-feature"</td></tr>
             <tr><td>Anthropic / OpenAI provider</td><td class="pts-pos">+2</td><td>Provider explicitly mentioned</td></tr>
+            <tr><td>Instance / notebook announcement</td><td class="pts-neg">-2</td><td>Hardware/capacity, not feature</td></tr>
+            <tr><td>Performance / pricing / security</td><td class="pts-neg">-0.5</td><td>Incremental updates</td></tr>
             <tr><td>Region expansion to APJ</td><td class="pts-pos">+1</td><td>Expands to Asia Pacific</td></tr>
             <tr><td>Region expansion (non-APJ only)</td><td class="pts-neg">-1.5</td><td>Only expands to other regions</td></tr>
           </tbody>
@@ -2629,10 +2667,15 @@ REPORT_TEMPLATE = """\
             <tr><td>Core AI service (Bedrock, AgentCore, SageMaker AI)</td><td class="pts-pos">+4</td><td>Service named in title</td></tr>
             <tr><td>Key AI service (SageMaker, Kiro, QuickSight)</td><td class="pts-pos">+2</td><td>Service named in title</td></tr>
             <tr><td>Other AI-related service</td><td class="pts-pos">+1</td><td>Default</td></tr>
-            <tr><td>Has blog post / documentation link</td><td class="pts-pos">+3</td><td>External link in announcement</td></tr>
-            <tr><td>Announcement length</td><td class="pts-pos">+0-2</td><td>~0.5 pts per 100 words</td></tr>
-            <tr><td>New model announcement</td><td class="pts-pos">+1</td><td>Tagged as "new-model"</td></tr>
+            <tr><td>Blog post link</td><td class="pts-pos">+3</td><td>Link to aws.amazon.com/blogs/</td></tr>
+            <tr><td>GitHub samples link</td><td class="pts-pos">+2</td><td>Link to github.com/aws*</td></tr>
+            <tr><td>Documentation link</td><td class="pts-pos">+1</td><td>Link to docs.aws.amazon.com/</td></tr>
+            <tr><td>New model</td><td class="pts-pos">+1.5</td><td>Tagged as "new-model"</td></tr>
+            <tr><td>New service</td><td class="pts-pos">+1</td><td>Tagged as "new-service"</td></tr>
+            <tr><td>New feature</td><td class="pts-pos">+0.5</td><td>Tagged as "new-feature"</td></tr>
             <tr><td>Anthropic / OpenAI provider</td><td class="pts-pos">+2</td><td>Provider explicitly mentioned</td></tr>
+            <tr><td>Instance / notebook announcement</td><td class="pts-neg">-2</td><td>Hardware/capacity, not feature</td></tr>
+            <tr><td>Performance / pricing / security</td><td class="pts-neg">-0.5</td><td>Incremental updates</td></tr>
             <tr><td>Region expansion to APJ</td><td class="pts-pos">+1</td><td>Expands to Asia Pacific</td></tr>
             <tr><td>Region expansion (non-APJ only)</td><td class="pts-neg">-1.5</td><td>Only expands to other regions</td></tr>
           </tbody>

@@ -289,7 +289,7 @@ class Tagger:
             concepts=self._validate_tags(data.get("concepts", []), _VALID_CONCEPTS),
             use_cases=self._validate_tags(data.get("use_cases", []), _VALID_USE_CASES),
             providers=self._validate_tags(data.get("providers", []), _VALID_PROVIDERS),
-            geo_availability=self._validate_geo(data.get("geo_availability", "")),
+            geo_availability=self._validate_geo_list(data.get("geo_availability", [])),
         )
 
     @staticmethod
@@ -348,12 +348,24 @@ class Tagger:
 
     @staticmethod
     def _validate_geo(value) -> str:
-        """Validate geo_availability value."""
+        """Validate geo_availability value (legacy single-value support)."""
         if not isinstance(value, str):
             return ""
         if value in _VALID_GEO_AVAILABILITY:
             return value
         return ""
+
+    @staticmethod
+    def _validate_geo_list(value) -> list[str]:
+        """Validate geo_availability as a list of geographies."""
+        if isinstance(value, str):
+            # Backward compat: single string → list
+            if value in _VALID_GEO_AVAILABILITY:
+                return [value]
+            return []
+        if not isinstance(value, list):
+            return []
+        return [v for v in value if isinstance(v, str) and v in _VALID_GEO_AVAILABILITY]
 
 
 # Valid taxonomy tag sets for validation

@@ -31,58 +31,39 @@ APJ_AVAILABLE_SERVICES = ImportanceClassifier.APJ_AVAILABLE_SERVICES
 
 
 def compute_geo_relevance_for_row(row: dict, preferred: str) -> str:
-    """Compute geo_relevance combining LLM tagger output + keyword detection.
+    """Compute geo_relevance as comma-separated list of geographies.
 
-    Strategy:
-    - Keyword detection for preferred geography (APJ) is authoritative
-    - For "global": trust tagger or keyword "all regions" phrases
-    - For non-APJ specific regions: return empty
+    Detects all geographies mentioned in the announcement text.
+    Returns: "apj,emea" or "global" or "" (comma-separated).
     """
-    if preferred == "global":
-        return ""
-
     title = row.get("title", "")
     description = row.get("description", "")
     text = (title + " " + description).lower()
 
-    # Step 1: Keyword check for preferred geography is AUTHORITATIVE
-    if preferred in GEOGRAPHY_KEYWORDS:
-        for keyword in GEOGRAPHY_KEYWORDS[preferred]:
-            if keyword in text:
-                return "local"
-
-    # Step 2: Check for explicit "all regions" keywords
+    # Check for global availability keywords first
     for keyword in GLOBAL_AVAILABILITY_KEYWORDS:
         if keyword in text:
             return "global"
 
-    # Step 3: Use tagger's geo_availability
+    # Detect all mentioned geographies
+    detected_geos: set[str] = set()
+    for geo_name, keywords in GEOGRAPHY_KEYWORDS.items():
+        if geo_name == "gov":
+            for keyword in keywords:
+                if keyword in text:
+                    detected_geos.add("americas")
+                    break
+        else:
+            for keyword in keywords:
+                if keyword in text:
+                    detected_geos.add(geo_name)
+                    break
+
+    if detected_geos:
+        return ",".join(sorted(detected_geos))
+
+    # Fallback: infer global for GA/new-feature on APJ-available service
     tags_raw = row.get("tags", "")
-    if tags_raw:
-        tags = AnnouncementTags.deserialize(tags_raw)
-        if tags.geo_availability == "global":
-            return "global"
-        elif tags.geo_availability == preferred:
-            return "local"  # Shouldn't reach here (keyword would have caught it)
-        elif tags.geo_availability in ("emea", "americas"):
-            return ""  # Region-specific elsewhere
-
-    # Step 4: Fallback — check for non-preferred regions
-    any_region_mentioned = False
-    for geography, keywords in GEOGRAPHY_KEYWORDS.items():
-        if geography == preferred:
-            continue
-        for keyword in keywords:
-            if keyword in text:
-                any_region_mentioned = True
-                break
-        if any_region_mentioned:
-            break
-
-    if any_region_mentioned:
-        return ""
-
-    # Step 5: No regions at all — infer global for GA/new-feature on APJ service
     if tags_raw:
         tags = AnnouncementTags.deserialize(tags_raw)
         if ("ga-launch" in tags.types or "new-feature" in tags.types):
@@ -166,14 +147,19 @@ def main():
     )
 
     # Print summary
-    local_count = sum(1 for r in rows if r["geo_relevance"] == "local")
-    global_count = sum(1 for r in rows if r["geo_relevance"] == "global")
-    none_count = sum(1 for r in rows if r["geo_relevance"] == "")
+    from collections import Counter
+    geo_counter = Counter()
+    for r in rows:
+        geo = r.get("geo_relevance", "")
+        if geo:
+            for g in geo.split(","):
+                geo_counter[g.strip()] += 1
+        else:
+            geo_counter["none"] += 1
 
     print(f"\nProcessed {len(rows)} announcements:")
-    print(f"  Local ({preferred.upper()}): {local_count}")
-    print(f"  Global: {global_count}")
-    print(f"  Not relevant: {none_count}")
+    for geo, count in sorted(geo_counter.items()):
+        print(f"  {geo}: {count}")
     print(f"  Updated: {updated}")
     print("\nDone. Run ./rebuild-site.sh --skip-cdk to see changes on the website.")
 
