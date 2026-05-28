@@ -562,6 +562,13 @@ class WebsiteBuilder:
                 for t in a.tags.providers:
                     tags_parts.append(f'<span class="tag tag-provider">{_sanitize_html(t)}</span>')
                 tags_parts.append('</div>\n')
+            if a.geo_relevance:
+                tags_parts.append('    <div class="report-tag-group"><span class="tag-group-label">Geography</span>')
+                for geo in a.geo_relevance.split(","):
+                    geo = geo.strip()
+                    if geo:
+                        tags_parts.append(f'<span class="tag tag-concept">{_sanitize_html(geo.upper() if geo != "global" else "Global")}</span>')
+                tags_parts.append('</div>\n')
             tags_parts.append('  </div>\n')
             tags_parts.append('</section>')
             tags_section = "".join(tags_parts)

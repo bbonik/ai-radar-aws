@@ -62,13 +62,12 @@ def compute_geo_relevance_for_row(row: dict, preferred: str) -> str:
     if detected_geos:
         return ",".join(sorted(detected_geos))
 
-    # Fallback: infer global for GA/new-feature on APJ-available service
+    # Fallback: infer global for GA/new-feature with no region info
     tags_raw = row.get("tags", "")
     if tags_raw:
         tags = AnnouncementTags.deserialize(tags_raw)
         if ("ga-launch" in tags.types or "new-feature" in tags.types):
-            if any(svc in APJ_AVAILABLE_SERVICES for svc in tags.services):
-                return "global"
+            return "global"
 
     return ""
 

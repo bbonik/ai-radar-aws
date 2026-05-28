@@ -351,10 +351,9 @@ class PipelineOrchestrator:
             if valid_geos:
                 return ",".join(sorted(valid_geos))
 
-        # Final fallback: infer global for GA/new-feature on APJ-available service
+        # Final fallback: infer global for GA/new-feature with no region info
         if tags and ("ga-launch" in tags.types or "new-feature" in tags.types):
-            if any(svc in self._importance_classifier.APJ_AVAILABLE_SERVICES for svc in tags.services):
-                return "global"
+            return "global"
 
         return ""
 

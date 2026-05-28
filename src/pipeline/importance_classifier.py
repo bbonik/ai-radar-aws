@@ -74,6 +74,7 @@ GLOBAL_AVAILABILITY_KEYWORDS: list[str] = [
     "all supported regions",
     "all regions where",
     "all commercial regions",
+    "all commercial aws regions",
     "globally available",
     "available globally",
     "worldwide",
