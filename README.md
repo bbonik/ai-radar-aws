@@ -267,7 +267,7 @@ Assumptions: ~7 new AI/ML announcements per week (~30/month), low website traffi
 | **Bedrock — Sonnet 4.6** (reports) | 30 calls × ~2K input + 4K output tokens | ~$1.50 |
 | **Bedrock — Opus 4.6** (diagrams) | 20 calls × ~2K input + 2K output tokens | ~$3.00 |
 | **Bedrock — Haiku 4.5** (tagging) | 30 calls × ~1K input + 0.5K output tokens | ~$0.05 |
-| **Lambda** (3 functions) | ~35 invocations/day, <5 min total | ~$0.01 |
+| **Lambda** (3 functions) | ~35 invocations/day, 1024MB, <5 min total | ~$0.02 |
 | **S3** (3 buckets) | <50 MB storage, <1K requests/day | ~$0.01 |
 | **CloudFront** | <10K requests, <1 GB transfer | ~$0.10 |
 | **WAF** | 1 Web ACL + 2 rules | ~$6.00 |
