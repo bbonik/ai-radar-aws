@@ -158,6 +158,12 @@ class ImportanceClassifier:
         score = self.compute_score(item, tags)
         star_level = self._score_to_stars(score)
 
+        # Floor: high/medium tier services never go below 2★
+        if star_level < 2:
+            service_tier = self._get_service_points_from_tags(tags)
+            if service_tier is not None and service_tier >= self.config.service_points_medium:
+                star_level = 2
+
         self.logger.info(
             "Importance classification complete",
             title=item.title,
