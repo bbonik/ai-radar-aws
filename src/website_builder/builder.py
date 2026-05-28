@@ -470,7 +470,7 @@ class WebsiteBuilder:
                 elif geo == "americas":
                     badges.append('<span class="geo-badge geo-region">\U0001f30e AMER</span>')
             if badges:
-                geo_badge_html = '    ' + ' '.join(badges) + '\n'
+                geo_badge_html = '    <div class="geo-badges">' + ''.join(badges) + '</div>\n'
 
         return (
             f'<article class="announcement-card" '
@@ -1044,6 +1044,12 @@ body {
 }
 
 /* Geo Relevance Badge */
+.geo-badges {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: nowrap;
+}
+
 .geo-badge {
   font-size: 0.7rem;
   padding: 0.2rem 0.5rem;
@@ -1611,7 +1617,8 @@ JS_TEMPLATE = """\
       { key: 'types', containerId: 'type-chips' },
       { key: 'concepts', containerId: 'concept-chips' },
       { key: 'use_cases', containerId: 'usecase-chips' },
-      { key: 'providers', containerId: 'provider-chips' }
+      { key: 'providers', containerId: 'provider-chips' },
+      { key: 'geography', containerId: 'geography-chips' }
     ];
 
     dimensions.forEach(function(dim) {
@@ -1694,7 +1701,7 @@ JS_TEMPLATE = """\
     }
 
     // Tag dimension chips (services, types, concepts, use_cases, providers)
-    var dimensionContainers = ['service-chips', 'type-chips', 'concept-chips', 'usecase-chips', 'provider-chips'];
+    var dimensionContainers = ['service-chips', 'type-chips', 'concept-chips', 'usecase-chips', 'provider-chips', 'geography-chips'];
     dimensionContainers.forEach(function(id) {
       var container = document.getElementById(id);
       if (!container) return;
@@ -2365,6 +2372,10 @@ INDEX_TEMPLATE = """\
           <div class="filter-dimension-inner" id="filter-providers-row">
             <span class="dimension-label">Providers</span>
             <div class="dimension-chips" id="provider-chips"></div>
+          </div>
+          <div class="filter-dimension-inner" id="filter-geography-row">
+            <span class="dimension-label">Geography</span>
+            <div class="dimension-chips" id="geography-chips"></div>
           </div>
         </div>
       </div>
