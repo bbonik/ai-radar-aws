@@ -237,8 +237,8 @@ class ImportanceClassifier:
     def compute_score(self, item: RSSItem, tags: AnnouncementTags | None = None) -> float:
         """Compute the raw importance score for an item.
 
-        Score = service_tier_points + blogpost_points + word_count_contribution
-                + tag_bonus + region_geography_modifier
+        Score = service_tier_points + link_score + word_count_contribution
+                + tag_modifier + instance_penalty + region_geography_modifier
 
         Args:
             item: The RSS item to score.
@@ -253,17 +253,19 @@ class ImportanceClassifier:
             service_name = self._extract_service(item)
             service_points = self._get_service_points(service_name)
 
-        has_blogpost = self._has_blogpost_links(item)
-        blogpost_points = self.config.blogpost_points if has_blogpost else 0
+        # Tiered link scoring (highest-scoring link wins)
+        link_score = self._compute_link_score(item)
 
         word_count = len(item.description.split())
         word_count_contribution = word_count * self.config.word_count_scale
 
-        tag_bonus = self._compute_tag_bonus(tags)
+        tag_modifier = self._compute_tag_modifier(tags)
+
+        instance_penalty = self._compute_instance_penalty(item, tags)
 
         region_modifier = self._compute_region_geography_modifier(item, tags)
 
-        return service_points + blogpost_points + word_count_contribution + tag_bonus + region_modifier
+        return service_points + link_score + word_count_contribution + tag_modifier + instance_penalty + region_modifier
 
     def _get_service_points_from_tags(self, tags: AnnouncementTags | None) -> int | None:
         """Get service tier points from taxonomy tags.
@@ -284,38 +286,123 @@ class ImportanceClassifier:
 
         return self.config.service_points_base
 
-    def _compute_tag_bonus(self, tags: AnnouncementTags | None) -> float:
-        """Compute bonus points based on taxonomy tags.
+    def _compute_tag_modifier(self, tags: AnnouncementTags | None) -> float:
+        """Compute score modifier based on taxonomy tags.
 
-        Applies configurable bonuses for specific announcement types.
-        Only the highest applicable bonus is used (not cumulative).
+        Applies bonuses for significant announcement types (new-model, new-service,
+        new-feature) and penalties for incremental updates (performance, pricing, security).
+        Type modifiers: highest bonus wins (not cumulative), penalties are additive.
+        Provider bonus stacks on top.
 
         Args:
             tags: The taxonomy tags, or None if not available.
 
         Returns:
-            The tag bonus points (0 if no tags or no matching bonuses).
+            The tag modifier (can be positive or negative).
         """
         if not tags:
             return 0.0
 
-        bonus = 0.0
+        modifier = 0.0
 
-        # Type-based bonuses (highest wins, not cumulative)
+        # Type-based modifiers
         if tags.types:
+            # Bonuses (highest wins, not cumulative)
+            bonus = 0.0
             if "new-model" in tags.types:
                 bonus = max(bonus, self.config.tag_bonus_new_model)
             if "new-service" in tags.types:
                 bonus = max(bonus, self.config.tag_bonus_new_service)
+            if "new-feature" in tags.types:
+                bonus = max(bonus, self.config.tag_bonus_new_feature)
             if "ga-launch" in tags.types:
                 bonus = max(bonus, self.config.tag_bonus_ga_launch)
+            modifier += bonus
 
-        # Provider-based bonus (additive — stacks with type bonus)
+            # Penalties (additive — can stack)
+            if "performance" in tags.types:
+                modifier += self.config.tag_penalty_performance
+            if "pricing" in tags.types:
+                modifier += self.config.tag_penalty_pricing
+            if "security" in tags.types:
+                modifier += self.config.tag_penalty_security
+
+        # Provider-based bonus (additive — stacks with type modifier)
         if tags.providers:
             if "anthropic" in tags.providers or "openai" in tags.providers:
-                bonus += self.config.tag_bonus_key_provider
+                modifier += self.config.tag_bonus_key_provider
 
-        return bonus
+        return modifier
+
+    def _compute_link_score(self, item: RSSItem) -> float:
+        """Compute tiered link score based on URL type.
+
+        Only the highest-scoring link counts (not cumulative).
+        Blog posts > GitHub samples > Documentation > Other.
+
+        Returns:
+            The link score (0 if no qualifying links found).
+        """
+        urls = self._url_pattern.findall(item.description)
+        best_score = 0.0
+
+        for url in urls:
+            url = _clean_url(url)
+            if not url:
+                continue
+            # Skip the item's own AWS whats-new link
+            if url.startswith("https://aws.amazon.com/about-aws/whats-new/"):
+                continue
+            # Skip AWS service homepages
+            if re.match(r"https?://aws\.amazon\.com/[a-z0-9-]+/?$", url):
+                continue
+
+            # Determine link tier
+            if "aws.amazon.com/blogs/" in url:
+                score = self.config.link_points_blog
+            elif "github.com/aws" in url:
+                score = self.config.link_points_github
+            elif "docs.aws.amazon.com/" in url:
+                score = self.config.link_points_docs
+            else:
+                score = self.config.link_points_other
+
+            best_score = max(best_score, score)
+
+        return best_score
+
+    def _compute_instance_penalty(self, item: RSSItem, tags: AnnouncementTags | None) -> float:
+        """Apply penalty for instance type / notebook announcements.
+
+        These are hardware/capacity announcements that are less important
+        than feature launches, even on high-tier services.
+
+        Returns:
+            Negative penalty if instance/notebook announcement, 0 otherwise.
+        """
+        title_lower = item.title.lower()
+
+        # Detect instance/notebook patterns in title
+        instance_patterns = [
+            r"\binstances?\b",
+            r"\binstance type",
+            r"\bnotebook",
+            r"\bgpu\b.*\bavailab",
+            r"\baccelerator",
+            r"\bp\d+\b",  # p5, p4d, etc.
+            r"\bg\d+[a-z]*\b",  # g5, g6e, etc.
+            r"\btrn\d+",  # trn1, trn2
+            r"\binf\d+",  # inf1, inf2
+        ]
+
+        for pattern in instance_patterns:
+            if re.search(pattern, title_lower):
+                # Only apply if it's NOT a new-service (new instance families are important)
+                if tags and "new-service" in tags.types:
+                    return 0.0
+                return self.config.instance_announcement_penalty
+
+        return 0.0
 
     def _compute_region_geography_modifier(
         self, item: RSSItem, tags: AnnouncementTags | None

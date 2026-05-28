@@ -68,7 +68,9 @@ def _config_strategy():
         service_points_high=st.integers(min_value=1, max_value=10),
         service_points_medium=st.integers(min_value=1, max_value=10),
         service_points_base=st.integers(min_value=0, max_value=5),
-        blogpost_points=st.integers(min_value=0, max_value=10),
+        link_points_blog=st.floats(min_value=0, max_value=10, allow_nan=False, allow_infinity=False),
+        link_points_github=st.floats(min_value=0, max_value=5, allow_nan=False, allow_infinity=False),
+        link_points_docs=st.floats(min_value=0, max_value=3, allow_nan=False, allow_infinity=False),
         word_count_scale=st.floats(min_value=0.001, max_value=0.1, allow_nan=False, allow_infinity=False),
         threshold_2_star=st.floats(min_value=1.0, max_value=5.0, allow_nan=False, allow_infinity=False),
         threshold_3_star=st.floats(min_value=5.1, max_value=10.0, allow_nan=False, allow_infinity=False),
@@ -147,7 +149,7 @@ def test_property5_score_is_additive_sum_known_services(
     actual_score = classifier.compute_score(item)
 
     # Compute expected score
-    expected_blogpost_points = config.blogpost_points if has_blogpost else 0
+    expected_blogpost_points = config.link_points_blog if has_blogpost else 0
     actual_word_count = len(description.split())
     expected_word_contribution = actual_word_count * config.word_count_scale
     expected_score = expected_service_points + expected_blogpost_points + expected_word_contribution
@@ -197,7 +199,7 @@ def test_property5_score_is_additive_sum_base_tier(
 
     actual_score = classifier.compute_score(item)
 
-    expected_blogpost_points = config.blogpost_points if has_blogpost else 0
+    expected_blogpost_points = config.link_points_blog if has_blogpost else 0
     actual_word_count = len(description.split())
     expected_word_contribution = actual_word_count * config.word_count_scale
     expected_score = config.service_points_base + expected_blogpost_points + expected_word_contribution
@@ -263,7 +265,7 @@ def test_property5_score_additive_with_varied_config(
 
     actual_score = classifier.compute_score(item)
 
-    expected_blogpost_points = config.blogpost_points if has_blogpost else 0
+    expected_blogpost_points = config.link_points_blog if has_blogpost else 0
     actual_word_count = len(description.split())
     expected_word_contribution = actual_word_count * config.word_count_scale
     expected_score = expected_service_points + expected_blogpost_points + expected_word_contribution

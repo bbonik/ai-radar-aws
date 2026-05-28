@@ -47,7 +47,7 @@ class TestConfigDefaults:
         assert Config().llm_b_inference_profile_name == "ai-radar-graph-generator"
 
     def test_service_points_high_default(self):
-        assert Config().service_points_high == 3
+        assert Config().service_points_high == 4
 
     def test_service_points_medium_default(self):
         assert Config().service_points_medium == 2
@@ -55,8 +55,8 @@ class TestConfigDefaults:
     def test_service_points_base_default(self):
         assert Config().service_points_base == 1
 
-    def test_blogpost_points_default(self):
-        assert Config().blogpost_points == 3
+    def test_link_points_blog_default(self):
+        assert Config().link_points_blog == 3.0
 
     def test_word_count_scale_default(self):
         assert Config().word_count_scale == 0.005
@@ -123,7 +123,7 @@ class TestConfigTypes:
             config.service_points_high,
             config.service_points_medium,
             config.service_points_base,
-            config.blogpost_points,
+            config.service_points_base,
             config.research_timeout_per_announcement,
             config.rss_fetch_timeout,
             config.rss_max_retries,

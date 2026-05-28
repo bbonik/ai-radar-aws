@@ -49,18 +49,30 @@ class Config:
     service_points_high: int = 4      # Bedrock, Bedrock AgentCore, SageMaker AI
     service_points_medium: int = 2    # SageMaker, JumpStart, HyperPod, Unified Studio, Kiro, Quick/QuickSight
     service_points_base: int = 1      # All other relevant services (Lambda, OpenSearch, etc.)
-    blogpost_points: int = 3          # Points for having blogpost links
+    # Link scoring (tiered by link type — only highest-scoring link counts)
+    link_points_blog: float = 3.0         # Blog post (aws.amazon.com/blogs/)
+    link_points_github: float = 2.0       # GitHub samples (github.com/aws*)
+    link_points_docs: float = 1.0         # Documentation (docs.aws.amazon.com/)
+    link_points_other: float = 1.0        # Other external links
+
     word_count_scale: float = 0.005   # Points per word (e.g., 400 words = 2 points)
     threshold_2_star: float = 2.0     # Score >= this -> 2-star
     threshold_3_star: float = 3.5     # Score >= this -> 3-star
     threshold_4_star: float = 5.0     # Score >= this -> 4-star
     threshold_5_star: float = 6.5     # Score >= this -> 5-star
 
-    # Tag-based scoring bonuses (applied when tags are available)
-    tag_bonus_new_model: float = 1.0      # Bonus for "new-model" type tag
-    tag_bonus_new_service: float = 0.5    # Bonus for "new-service" type tag
-    tag_bonus_ga_launch: float = 0.1      # Bonus for "ga-launch" type tag
+    # Tag-based scoring modifiers (applied when tags are available)
+    tag_bonus_new_model: float = 1.5      # Bonus for "new-model" type tag
+    tag_bonus_new_service: float = 1.0    # Bonus for "new-service" type tag
+    tag_bonus_new_feature: float = 0.5    # Bonus for "new-feature" type tag
+    tag_bonus_ga_launch: float = 0.3      # Bonus for "ga-launch" type tag
+    tag_penalty_performance: float = -0.5  # Penalty for incremental "performance" improvements
+    tag_penalty_pricing: float = -0.5      # Penalty for "pricing" changes
+    tag_penalty_security: float = -0.5     # Penalty for "security" updates
     tag_bonus_key_provider: float = 2.0   # Bonus for anthropic or openai provider tags
+
+    # Instance/notebook announcement penalty
+    instance_announcement_penalty: float = -2.0  # Demotes instance type/notebook announcements
 
     # Geographic preference for region-expansion scoring
     # Set to your geography: "apj", "emea", "americas", or "global" (no bias)
