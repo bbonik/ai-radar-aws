@@ -147,10 +147,12 @@ def _markdown_to_html(text: str) -> str:
 
 
 def _apply_inline_formatting(text: str) -> str:
-    """Apply inline markdown formatting (bold, italic) to text.
+    """Apply inline markdown formatting (bold, italic, code) to text.
 
     Expects already-sanitized text (no raw HTML special chars).
     """
+    # Code: `text` -> <code>text</code>
+    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
     # Bold: **text** -> <strong>text</strong>
     text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
     # Italic: *text* -> <em>text</em>
@@ -1197,6 +1199,16 @@ body {
   font-size: 0.95rem;
   line-height: 1.7;
   color: var(--aws-text);
+}
+
+.report-section code, .card-summary code {
+  background: var(--aws-light);
+  border: 1px solid var(--aws-border);
+  border-radius: 3px;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.85em;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  color: var(--aws-dark);
 }
 
 .mermaid-section .mermaid {
