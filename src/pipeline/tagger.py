@@ -104,7 +104,7 @@ class Tagger:
             "bedrock": "bedrock",
             "bedrock-agentcore": "agentcore",
             "sagemaker": "sagemaker",
-            "sagemaker-ai": "sagemaker ai",
+            "sagemaker-ai": "sagemaker",
             "sagemaker-jumpstart": "jumpstart",
             "sagemaker-hyperpod": "hyperpod",
             "sagemaker-unified-studio": "unified studio",
@@ -137,6 +137,12 @@ class Tagger:
                 continue
             keyword = service_title_keywords.get(tag, tag)
             if keyword in title_lower:
+                validated_services.append(tag)
+                continue
+            # Lenient: if the parent service name appears in title, keep child tags
+            # e.g., "sagemaker" in title → keep "sagemaker-ai", "sagemaker-jumpstart", etc.
+            parent = tag.split("-")[0] if "-" in tag else ""
+            if parent and parent in title_lower:
                 validated_services.append(tag)
 
         # If all services were filtered out, keep "other-aws"

@@ -2578,7 +2578,6 @@ REPORT_TEMPLATE = """\
         <div class="report-meta">
           <span class="stars importance-{{IMPORTANCE_LEVEL}}">{{STARS}}</span>
           <span class="date">{{DATE}}</span>
-          <span class="service">{{SERVICE}}</span>
         </div>
         <h1 class="report-title">{{TITLE}}</h1>
         <a href="{{LINK}}" class="report-source-link" target="_blank" rel="noopener noreferrer">View original announcement &rarr;</a>

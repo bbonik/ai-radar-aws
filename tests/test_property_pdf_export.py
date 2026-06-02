@@ -256,11 +256,6 @@ def test_property16_header_metadata_in_report_content_div(
         "Publication date missing from #report-content div (won't appear in PDF header)"
     )
 
-    # Service name must be within the report-content div
-    assert _sanitize_html(announcement.aws_service) in report_content_div, (
-        "AWS service name missing from #report-content div (won't appear in PDF header)"
-    )
-
     # Importance stars must be within the report-content div
     stars = "\u2605" * announcement.importance_level + "\u2606" * (5 - announcement.importance_level)
     assert stars in report_content_div, (
