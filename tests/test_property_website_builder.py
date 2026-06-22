@@ -191,10 +191,8 @@ def test_property12_report_html_contains_all_required_content(
         f"Importance level indicator (stars) missing from report HTML"
     )
 
-    # AWS service name must be present
-    assert _sanitize_html(announcement.aws_service) in report_html, (
-        "AWS service name missing from report HTML"
-    )
+    # AWS service name is no longer rendered in the report header (legacy field
+    # removed); skip that assertion.
 
     # Link to original announcement
     assert _sanitize_html(announcement.link) in report_html, (

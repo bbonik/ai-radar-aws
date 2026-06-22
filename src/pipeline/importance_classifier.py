@@ -82,6 +82,23 @@ GLOBAL_AVAILABILITY_KEYWORDS: list[str] = [
     "every region",
 ]
 
+# Cache of compiled word-boundary patterns for geography keyword matching
+_GEO_PATTERN_CACHE: dict[str, "re.Pattern"] = {}
+
+
+def geo_keyword_in_text(keyword: str, text: str) -> bool:
+    """Return True if ``keyword`` appears in ``text`` as a whole word/phrase.
+
+    Uses word-boundary matching to avoid false positives from substrings —
+    e.g. the city keyword "paris" must NOT match inside "comparison".
+    ``text`` is expected to already be lowercased; matching is case-insensitive.
+    """
+    pattern = _GEO_PATTERN_CACHE.get(keyword)
+    if pattern is None:
+        pattern = re.compile(r"\b" + re.escape(keyword) + r"\b", re.IGNORECASE)
+        _GEO_PATTERN_CACHE[keyword] = pattern
+    return pattern.search(text) is not None
+
 
 def _clean_url(url: str) -> str:
     """Strip trailing punctuation that was captured by the URL regex.
@@ -212,7 +229,7 @@ class ImportanceClassifier:
         preferred_mentioned = False
         if preferred in GEOGRAPHY_KEYWORDS:
             for keyword in GEOGRAPHY_KEYWORDS[preferred]:
-                if keyword in text:
+                if geo_keyword_in_text(keyword, text):
                     preferred_mentioned = True
                     break
 
@@ -225,7 +242,7 @@ class ImportanceClassifier:
             if geography == preferred:
                 continue
             for keyword in keywords:
-                if keyword in text:
+                if geo_keyword_in_text(keyword, text):
                     any_region_mentioned = True
                     break
             if any_region_mentioned:
@@ -449,7 +466,7 @@ class ImportanceClassifier:
         mentioned_geographies: set[str] = set()
         for geography, keywords in GEOGRAPHY_KEYWORDS.items():
             for keyword in keywords:
-                if keyword in text:
+                if geo_keyword_in_text(keyword, text):
                     mentioned_geographies.add(geography)
                     break  # One match per geography is enough
 

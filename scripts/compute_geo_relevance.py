@@ -22,6 +22,7 @@ from src.pipeline.importance_classifier import (
     GEOGRAPHY_KEYWORDS,
     GLOBAL_AVAILABILITY_KEYWORDS,
     ImportanceClassifier,
+    geo_keyword_in_text,
 )
 from src.shared.models import AnnouncementTags, ProcessedAnnouncement, RSSItem
 
@@ -50,12 +51,12 @@ def compute_geo_relevance_for_row(row: dict, preferred: str) -> str:
     for geo_name, keywords in GEOGRAPHY_KEYWORDS.items():
         if geo_name == "gov":
             for keyword in keywords:
-                if keyword in text:
+                if geo_keyword_in_text(keyword, text):
                     detected_geos.add("americas")
                     break
         else:
             for keyword in keywords:
-                if keyword in text:
+                if geo_keyword_in_text(keyword, text):
                     detected_geos.add(geo_name)
                     break
 

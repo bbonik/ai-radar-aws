@@ -25,7 +25,7 @@ from src.shared.models import (
 )
 from src.pipeline.graph_generator import GraphGenerator
 from src.pipeline.importance_classifier import ImportanceClassifier
-from src.pipeline.importance_classifier import GEOGRAPHY_KEYWORDS, GLOBAL_AVAILABILITY_KEYWORDS
+from src.pipeline.importance_classifier import GEOGRAPHY_KEYWORDS, GLOBAL_AVAILABILITY_KEYWORDS, geo_keyword_in_text
 from src.pipeline.relevance_filter import RelevanceFilter
 from src.pipeline.report_generator import ReportGenerator, ReportGenerationError
 from src.pipeline.research_agent import ResearchAgent
@@ -330,12 +330,12 @@ class PipelineOrchestrator:
             if geo_name == "gov":
                 # Map gov to americas
                 for keyword in keywords:
-                    if keyword in text:
+                    if geo_keyword_in_text(keyword, text):
                         detected_geos.add("americas")
                         break
             else:
                 for keyword in keywords:
-                    if keyword in text:
+                    if geo_keyword_in_text(keyword, text):
                         detected_geos.add(geo_name)
                         break
 
