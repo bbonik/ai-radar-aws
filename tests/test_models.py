@@ -94,7 +94,6 @@ class TestProcessedAnnouncement:
             description="New models available",
             pub_date="2024-01-15",
             link="https://aws.amazon.com/about-aws/whats-new/2024/01/bedrock",
-            aws_service="Amazon Bedrock",
             importance_level=3,
             importance_score=7.5,
             report=Report(
@@ -120,7 +119,6 @@ class TestProcessedAnnouncement:
             "description",
             "pub_date",
             "link",
-            "aws_service",
             "importance_level",
             "importance_score",
             "whats_new",
@@ -164,7 +162,6 @@ class TestProcessedAnnouncement:
         assert restored.description == sample_announcement.description
         assert restored.pub_date == sample_announcement.pub_date
         assert restored.link == sample_announcement.link
-        assert restored.aws_service == sample_announcement.aws_service
         assert restored.importance_level == sample_announcement.importance_level
         assert restored.importance_score == sample_announcement.importance_score
         assert restored.report.whats_new == sample_announcement.report.whats_new

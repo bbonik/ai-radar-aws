@@ -329,7 +329,6 @@ class WebsiteBuilder:
                 "title": a.title,
                 "pub_date": a.pub_date,
                 "link": a.link,
-                "aws_service": a.aws_service,
                 "importance_level": a.importance_level,
                 "slug": _slug_from_link(a.link),
                 "tags": tags_list,
@@ -502,7 +501,6 @@ class WebsiteBuilder:
         """Generate an individual report page for an announcement."""
         stars = "\u2605" * a.importance_level + "\u2606" * (5 - a.importance_level)
         title_safe = _sanitize_html(a.title)
-        service_safe = _sanitize_html(a.aws_service)
         date_display = _format_date_display(a.pub_date)
         link_safe = _sanitize_html(a.link)
 
@@ -592,7 +590,6 @@ class WebsiteBuilder:
         return (
             REPORT_TEMPLATE
             .replace("{{TITLE}}", title_safe)
-            .replace("{{SERVICE}}", service_safe)
             .replace("{{DATE}}", date_display)
             .replace("{{STARS}}", stars)
             .replace("{{IMPORTANCE_LEVEL}}", str(a.importance_level))
@@ -1129,14 +1126,6 @@ body {
   color: var(--aws-text-secondary);
 }
 
-.report-meta .service {
-  font-size: 0.85rem;
-  background: var(--aws-light);
-  padding: 0.25rem 0.75rem;
-  border-radius: 12px;
-  color: var(--aws-orange-dark);
-  font-weight: 500;
-}
 
 .report-title {
   font-size: 1.75rem;

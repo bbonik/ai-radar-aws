@@ -18,7 +18,7 @@ from hypothesis import strategies as st
 
 from src.config import Config
 from src.shared.logger import StructuredLogger
-from src.shared.models import ProcessedAnnouncement, Report
+from src.shared.models import AnnouncementTags, ProcessedAnnouncement, Report
 from src.website_builder.builder import WebsiteBuilder, _sanitize_html
 
 
@@ -58,12 +58,14 @@ _link_strategy = st.from_regex(
 )
 
 # Strategy for AWS service names
+# Service tags (matches the real taxonomy used for client-side filtering)
 _service_strategy = st.sampled_from([
-    "Amazon Bedrock", "Amazon SageMaker", "Amazon Kendra",
-    "Amazon Comprehend", "Amazon Rekognition", "Amazon Textract",
-    "Amazon Polly", "Amazon Lex", "Amazon Translate",
-    "Amazon QuickSight", "AWS Lambda", "Amazon S3",
+    "bedrock", "sagemaker-ai", "kendra", "comprehend", "rekognition",
+    "textract", "polly", "lex", "quicksight", "lambda", "opensearch",
 ])
+
+# Strategy for AnnouncementTags carrying a single service tag.
+_tags_strategy = _service_strategy.map(lambda s: AnnouncementTags(services=[s]))
 
 # Strategy for importance levels
 _importance_strategy = st.sampled_from([1, 2, 3, 4, 5])
@@ -101,13 +103,13 @@ def _announcement_strategy():
         description=_html_safe_text,
         pub_date=_date_strategy,
         link=_link_strategy,
-        aws_service=_service_strategy,
         importance_level=_importance_strategy,
         importance_score=st.floats(min_value=0.0, max_value=10.0, allow_nan=False, allow_infinity=False),
         report=_report_strategy,
         mermaid_graph=_mermaid_strategy,
         blogpost_links=_blogpost_links_strategy,
         first_detected=_date_strategy.map(lambda d: d + "T00:00:00Z"),
+        tags=_tags_strategy,
     )
 
 
@@ -234,9 +236,9 @@ def _apply_filters(
     """
     result = announcements[:]
 
-    # Service filter
+    # Service filter (by taxonomy service tag — mirrors client-side filtering)
     if service_filter is not None:
-        result = [a for a in result if a.aws_service == service_filter]
+        result = [a for a in result if service_filter in a.tags.services]
 
     # Importance filter
     if importance_filter is not None:
@@ -283,8 +285,8 @@ def test_property13_composable_filter_produces_correct_results(
     # Verify: every item in filtered satisfies ALL active criteria
     for item in filtered:
         if service_filter is not None:
-            assert item.aws_service == service_filter, (
-                f"Item with service '{item.aws_service}' should not pass "
+            assert service_filter in item.tags.services, (
+                f"Item with services '{item.tags.services}' should not pass "
                 f"service filter '{service_filter}'"
             )
         if importance_filter is not None:
@@ -295,7 +297,7 @@ def test_property13_composable_filter_produces_correct_results(
 
     # Verify: no item outside filtered satisfies all criteria
     for item in announcements:
-        passes_service = service_filter is None or item.aws_service == service_filter
+        passes_service = service_filter is None or service_filter in item.tags.services
         passes_importance = importance_filter is None or item.importance_level == importance_filter
         if passes_service and passes_importance:
             assert item in filtered, (
@@ -406,9 +408,9 @@ def test_property14_filter_state_independence(
     # Items in result_2 should match service_filter_2 (if set)
     if service_filter_2 is not None:
         for item in result_2:
-            assert item.aws_service == service_filter_2, (
+            assert service_filter_2 in item.tags.services, (
                 f"Service filter not correctly applied after change: "
-                f"expected '{service_filter_2}', got '{item.aws_service}'"
+                f"expected '{service_filter_2}', got '{item.tags.services}'"
             )
 
     # Verify: the results differ only due to the changed filter
@@ -420,11 +422,11 @@ def test_property14_filter_state_independence(
 
     expected_1 = [
         a for a in all_importance_filtered
-        if service_filter_1 is None or a.aws_service == service_filter_1
+        if service_filter_1 is None or service_filter_1 in a.tags.services
     ]
     expected_2 = [
         a for a in all_importance_filtered
-        if service_filter_2 is None or a.aws_service == service_filter_2
+        if service_filter_2 is None or service_filter_2 in a.tags.services
     ]
 
     assert result_1 == expected_1, "Result 1 doesn't match expected filter application"
@@ -649,7 +651,6 @@ def test_property17_xss_in_full_report_page(
         description=description,
         pub_date="2025-01-15",
         link="https://aws.amazon.com/whats-new/test-announcement",
-        aws_service="Amazon Bedrock",
         importance_level=2,
         importance_score=5.0,
         report=Report(

@@ -93,7 +93,6 @@ def _announcement_strategy():
         description=_html_safe_text,
         pub_date=_date_strategy,
         link=_link_strategy,
-        aws_service=_service_strategy,
         importance_level=_importance_strategy,
         importance_score=st.floats(min_value=0.0, max_value=10.0, allow_nan=False, allow_infinity=False),
         report=_report_strategy,

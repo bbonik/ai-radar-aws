@@ -47,7 +47,6 @@ def sample_announcement():
         description="Amazon Bedrock adds support for Anthropic Claude 4 model.",
         pub_date="Mon, 15 Jan 2025 22:00:00 GMT",
         link="https://aws.amazon.com/about-aws/whats-new/2025/01/bedrock-claude-4",
-        aws_service="Amazon Bedrock",
         importance_level=3,
         importance_score=6.5,
         report=Report(
@@ -183,7 +182,6 @@ class TestSaveAnnouncement:
             description="New SageMaker feature.",
             pub_date="Tue, 16 Jan 2025 10:00:00 GMT",
             link="https://aws.amazon.com/about-aws/whats-new/2025/01/sagemaker",
-            aws_service="Amazon SageMaker",
             importance_level=2,
             importance_score=4.0,
             report=Report(
@@ -250,7 +248,6 @@ class TestSaveAnnouncement:
             description="Test desc",
             pub_date="Date",
             link="https://test.com",
-            aws_service="TestService",
             importance_level=1,
             importance_score=1.0,
             report=Report(
@@ -292,7 +289,6 @@ class TestSaveAnnouncement:
             description="Test desc",
             pub_date="Date",
             link="https://test.com",
-            aws_service="TestService",
             importance_level=1,
             importance_score=1.0,
             report=Report(
@@ -366,7 +362,6 @@ class TestSaveAnnouncement:
             description="Small change.",
             pub_date="Date",
             link="https://test.com/minor",
-            aws_service="TestService",
             importance_level=1,
             importance_score=1.5,
             report=Report(

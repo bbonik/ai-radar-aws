@@ -112,7 +112,6 @@ class ProcessedAnnouncement:
     description: str
     pub_date: str
     link: str
-    aws_service: str
     importance_level: int  # 1, 2, or 3
     importance_score: float
     report: Report
@@ -129,7 +128,6 @@ class ProcessedAnnouncement:
             "description": self.description,
             "pub_date": self.pub_date,
             "link": self.link,
-            "aws_service": self.aws_service,
             "importance_level": str(self.importance_level),
             "importance_score": str(self.importance_score),
             "whats_new": self.report.whats_new,
@@ -173,7 +171,6 @@ class ProcessedAnnouncement:
             description=row["description"],
             pub_date=row["pub_date"],
             link=row["link"],
-            aws_service=row["aws_service"],
             importance_level=int(row["importance_level"]),
             importance_score=float(row["importance_score"]),
             report=report,

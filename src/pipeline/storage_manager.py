@@ -23,7 +23,6 @@ ANNOUNCEMENT_CSV_COLUMNS = [
     "description",
     "pub_date",
     "link",
-    "aws_service",
     "importance_level",
     "importance_score",
     "whats_new",

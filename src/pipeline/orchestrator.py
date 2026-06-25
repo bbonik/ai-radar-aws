@@ -192,7 +192,6 @@ class PipelineOrchestrator:
                 description=item.description,
                 pub_date=item.pub_date,
                 link=item.link,
-                aws_service=self._extract_service_name(item),
                 importance_level=star_level,
                 importance_score=score,
                 report=report,
@@ -306,10 +305,6 @@ class PipelineOrchestrator:
                 error_message=str(exc),
             )
             return False
-
-    def _extract_service_name(self, item: RSSItem) -> str:
-        """Extract the AWS service name from the item using the importance classifier's logic."""
-        return self._importance_classifier._extract_service(item)
 
     def _resolve_geo_relevance(self, item: RSSItem, tags) -> str:
         """Resolve geographic relevance as a comma-separated list of geographies.

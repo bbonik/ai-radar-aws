@@ -67,7 +67,6 @@ processed_announcement_strategy = st.builds(
     description=general_text,
     pub_date=general_text,
     link=general_text,
-    aws_service=general_text,
     importance_level=st.sampled_from([1, 2, 3, 4, 5]),
     importance_score=importance_score_strategy,
     report=report_strategy,
@@ -99,7 +98,6 @@ def test_csv_round_trip_consistency(announcement: ProcessedAnnouncement):
     assert restored.description == announcement.description
     assert restored.pub_date == announcement.pub_date
     assert restored.link == announcement.link
-    assert restored.aws_service == announcement.aws_service
     assert restored.importance_level == announcement.importance_level
     assert restored.importance_score == announcement.importance_score
     assert restored.report == announcement.report
