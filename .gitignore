@@ -82,3 +82,7 @@ coverage.xml
 
 # Planning docs (not for public repo)
 docs/json-storage-migration.md
+
+# Local backups and generated artifacts
+ai-radar-backup-*.zip
+*.pptx
