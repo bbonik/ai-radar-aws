@@ -2575,6 +2575,8 @@ REPORT_TEMPLATE = """\
         </div>
       </header>
 
+      {{MERMAID_SECTION}}
+
       <section class="report-section">
         <h2>What&#x27;s New</h2>
         {{WHATS_NEW}}
@@ -2606,7 +2608,6 @@ REPORT_TEMPLATE = """\
       </section>
 
       {{TAGS_SECTION}}
-      {{MERMAID_SECTION}}
       {{BLOGPOST_LINKS}}
     </div>
   </main>
