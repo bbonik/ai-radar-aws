@@ -264,13 +264,16 @@ def test_property16_header_metadata_in_report_content_div(
 
 @given(announcement=_announcement_strategy())
 @settings(max_examples=100)
-def test_property16_html2pdf_cdn_loaded(
+def test_property16_native_print_mechanism(
     announcement: ProcessedAnnouncement,
 ):
-    """Property 16: The html2pdf.js CDN script is loaded in the report page.
+    """Property 16: PDF export uses the browser-native print mechanism.
 
-    The page MUST load the html2pdf.js library from CDN so that the exportPDF()
-    function can generate the PDF client-side without server-side processing.
+    The report is exported to PDF via the browser's own print-to-PDF (no
+    rasterizing library), producing real selectable text. This requires:
+    - NO html2pdf.js dependency in the report page
+    - a print stylesheet (@media print) in the shared CSS
+    - the exportPDF() handler invoking window.print() in the shared JS
 
     **Validates: Requirements 12.1, 12.3**
     """
@@ -281,12 +284,20 @@ def test_property16_html2pdf_cdn_loaded(
     assert len(report_pages) == 1
     report_html = files[report_pages[0]]
 
-    # html2pdf.js CDN script must be present
-    assert "html2pdf" in report_html, (
-        "html2pdf.js CDN script not found in report page"
+    # The rasterizing library must be gone.
+    assert "html2pdf" not in report_html, (
+        "html2pdf.js should no longer be referenced in the report page"
     )
-    assert "cdnjs.cloudflare.com/ajax/libs/html2pdf.js" in report_html, (
-        "html2pdf.js CDN URL not found in report page"
+
+    # The shared CSS must contain a print stylesheet.
+    css = files["assets/style.css"]
+    assert "@media print" in css, "Print stylesheet (@media print) missing from CSS"
+    assert "@page" in css, "@page rule missing from CSS"
+
+    # The shared JS must drive export via the native print dialog.
+    app_js = files["assets/app.js"]
+    assert "window.print()" in app_js, (
+        "exportPDF() must call window.print() for native PDF export"
     )
 
 

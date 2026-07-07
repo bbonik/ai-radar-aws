@@ -7,7 +7,7 @@ pages, and shared CSS/JS assets. Uses Python string templates for HTML generatio
 Features:
 - Mermaid.js rendering for diagrams (CDN)
 - Chart.js for timeline visualization (CDN)
-- html2pdf.js for client-side PDF export (CDN)
+- Browser-native print-to-PDF export (print stylesheet, no external library)
 - Client-side filtering (time period, service, importance ranking)
 - Responsive design for desktop, tablet, and mobile
 - "AI Radar AWS" branding with AWS-inspired color scheme
@@ -1562,6 +1562,92 @@ body {
     flex-direction: column;
   }
 }
+
+/* =========================================================================
+   Print / PDF export (browser-native "Save as PDF")
+   Produces a real, text-based (selectable, copyable) vector PDF with
+   correct fonts, aligned clickable links, and clean page breaks.
+   ========================================================================= */
+@page {
+  size: A4;
+  margin: 15mm;
+}
+
+@media print {
+  /* Reset backgrounds/colors so the printed page is clean and legible */
+  html, body {
+    background: #ffffff !important;
+    color: #1a1a1a !important;
+  }
+
+  /* Ensure background colors/inline highlights that matter are preserved */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide all non-report chrome */
+  .site-header,
+  .site-footer,
+  .header-nav,
+  .back-link,
+  .report-actions,
+  .about-modal-overlay,
+  .report-source-link {
+    display: none !important;
+  }
+
+  /* Let the report use the full printable width */
+  .report-container,
+  .report-content,
+  #report-content {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Avoid slicing content across page boundaries */
+  .report-section,
+  .mermaid-section,
+  .report-tag-group,
+  .blogpost-links li,
+  li {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Keep headings attached to the content that follows them */
+  h1, h2, h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .report-title {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* Make the Mermaid visual summary fill its section and stay crisp (vector) */
+  .mermaid-section .mermaid {
+    background: #f7f8fa !important;
+    overflow: visible !important;
+    text-align: center;
+  }
+
+  .mermaid-section .mermaid svg {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* Keep links visible and readable in print (they remain clickable) */
+  a {
+    color: #b45f06 !important;
+    text-decoration: none;
+  }
+}
 """
 
 # =============================================================================
@@ -2141,23 +2227,30 @@ JS_TEMPLATE = """\
     });
   }
 
-  // PDF Export (html2pdf.js)
+  // PDF Export via the browser's native print-to-PDF.
+  // Produces a real text-based (selectable/copyable) vector PDF with correct
+  // fonts, aligned clickable links, and clean page breaks. A print stylesheet
+  // (@media print) hides site chrome and formats the report for A4.
+  // Works in Chrome, Firefox, and Safari.
   window.exportPDF = function() {
-    var element = document.getElementById('report-content');
-    if (!element || !window.html2pdf) return;
+    var titleEl = document.querySelector('.report-title');
+    var originalTitle = document.title;
 
-    var title = document.querySelector('.report-title');
-    var filename = title ? title.textContent.substring(0, 50).replace(/[^a-zA-Z0-9]/g, '_') : 'report';
+    // Set a sensible suggested filename for the "Save as PDF" dialog.
+    if (titleEl) {
+      document.title = titleEl.textContent.trim().substring(0, 80);
+    }
 
-    var opt = {
-      margin: [10, 10, 10, 10],
-      filename: filename + '.pdf',
-      image: { type: 'jpeg', quality: 0.95 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    // Restore the original document title after the print dialog closes.
+    var restore = function() {
+      document.title = originalTitle;
+      window.removeEventListener('afterprint', restore);
     };
+    window.addEventListener('afterprint', restore);
+    // Safety net for browsers that don't reliably fire afterprint.
+    setTimeout(restore, 1000);
 
-    html2pdf().set(opt).from(element).save();
+    window.print();
   };
 
   // About Modal
@@ -2540,7 +2633,6 @@ REPORT_TEMPLATE = """\
   <link rel="icon" type="image/png" href="../assets/favicon.png">
   <link rel="stylesheet" href="../assets/style.css">
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.6/dist/mermaid.min.js" integrity="sha384-qX9VvWkP79m/O121ZE6sOYp0nf/pldQgtvWDbkpzi+3mUo4Wn4Ix4cFzNPay3VaB" crossorigin="anonymous"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha384-Yv5O+t3uE3hunW8uyrbpPW3iw6/5/Y7HitWJBLgqfMoA36NogMmy+8wWZMpn3HWc" crossorigin="anonymous"></script>
 </head>
 <body>
   <header class="site-header">
