@@ -504,6 +504,13 @@ class WebsiteBuilder:
         date_display = _format_date_display(a.pub_date)
         link_safe = _sanitize_html(a.link)
 
+        # One-sentence card summary shown as a subtitle under the title.
+        subtitle_html = ""
+        if a.report.card_summary and a.report.card_summary.strip():
+            subtitle_html = (
+                f'<p class="report-subtitle">{_apply_inline_formatting(_sanitize_html(a.report.card_summary))}</p>'
+            )
+
         # Sanitize report text first, then convert to HTML
         whats_new_safe = _sanitize_html(a.report.whats_new)
         how_it_works_safe = _sanitize_html(a.report.how_it_works)
@@ -590,6 +597,7 @@ class WebsiteBuilder:
         return (
             REPORT_TEMPLATE
             .replace("{{TITLE}}", title_safe)
+            .replace("{{SUBTITLE}}", subtitle_html)
             .replace("{{DATE}}", date_display)
             .replace("{{STARS}}", stars)
             .replace("{{IMPORTANCE_LEVEL}}", str(a.importance_level))
@@ -1131,8 +1139,17 @@ body {
   font-size: 1.75rem;
   font-weight: 700;
   line-height: 1.3;
-  margin-bottom: 1rem;
+  margin-bottom: 0.6rem;
   color: var(--aws-dark);
+}
+
+.report-subtitle {
+  font-size: 1.1rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--aws-text-secondary);
+  margin-bottom: 1rem;
+  max-width: 60ch;
 }
 
 .report-source-link {
@@ -2661,6 +2678,7 @@ REPORT_TEMPLATE = """\
           <span class="date">{{DATE}}</span>
         </div>
         <h1 class="report-title">{{TITLE}}</h1>
+        {{SUBTITLE}}
         <a href="{{LINK}}" class="report-source-link" target="_blank" rel="noopener noreferrer">View original announcement &rarr;</a>
         <div class="report-actions">
           <button class="btn-pdf" onclick="exportPDF()">Export as PDF</button>
