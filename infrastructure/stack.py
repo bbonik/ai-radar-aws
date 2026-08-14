@@ -680,11 +680,14 @@ class AiRadarAwsStack(Stack):
                 )
             ]
 
+        # No explicit budget_name: NotificationsWithSubscribers is create-only,
+        # so any change replaces the budget — and a fixed name makes the
+        # replacement's create collide with the existing budget ("same name but
+        # a different internalId"). A generated name avoids that class forever.
         self.daily_budget = budgets.CfnBudget(
             self,
             "DailySpendBudget",
             budget=budgets.CfnBudget.BudgetDataProperty(
-                budget_name="AiRadar-DailySpend",
                 budget_type="COST",
                 time_unit="DAILY",
                 budget_limit=budgets.CfnBudget.SpendProperty(
