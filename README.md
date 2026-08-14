@@ -298,7 +298,19 @@ cp cdk.context.json.example cdk.context.json
 | `alert_email` | Subscribes this address to the `ai-radar-alerts` SNS topic (CloudWatch alarms + the $20/day budget alert) | Alarms publish to the topic but nobody is subscribed; the deploy prints a warning |
 | `preferred_geography` | Geographic scoring bias and badges: `apj`, `emea`, or `americas` | `global` — no bias, no badges |
 
-Every key is optional: a fresh clone with no `cdk.context.json` deploys to a fully working default state. The CDK stack injects runtime values (currently `preferred_geography`) into the Lambdas as environment variables, and the utility scripts read the same file, so laptop and Lambda always resolve identical configuration.
+Every key is optional: a fresh clone with no `cdk.context.json` deploys to a fully working default state.
+
+**Precedence rule: values in `cdk.context.json` always override the defaults in `src/config.py`.** The two files are not competing settings — `config.py` holds the generic project defaults (identical for every deployment; don't put personal values there), and `cdk.context.json` holds *your* deployment's overrides. Deploy-time values (domain, certificate, email) are baked into the infrastructure by CDK; the runtime value (`preferred_geography`) reaches the Lambda in two hops:
+
+```
+cdk.context.json ──(cdk deploy: stack.py)──▶ Lambda env var PREFERRED_GEOGRAPHY
+                                                       │
+                                        (runtime: Config.__post_init__)
+                                                       ▼
+                                        Config().preferred_geography
+```
+
+The utility scripts read the same `cdk.context.json` (via `scripts/_common.py`), so laptop and Lambda always resolve identical configuration. To see which layer won, check the first log line of any pipeline run (or `./run-pipeline.sh` output) — it states the effective geography and its source.
 
 Custom domain prerequisites:
 - An ACM certificate for your domain, already validated (must be in **us-east-1** regardless of your stack's region — this is a CloudFront requirement)

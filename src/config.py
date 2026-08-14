@@ -343,7 +343,15 @@ Return a JSON object with exactly these keys:
     website_builder_timeout: int = 600  # 10 minutes in seconds
 
     def __post_init__(self) -> None:
-        """Apply per-deployment environment overrides (see module docstring)."""
+        """Apply per-deployment environment overrides (see module docstring).
+
+        Also records WHERE the effective value came from in
+        ``geography_source``, so the resolution is observable (logged at the
+        start of every pipeline run) instead of requiring the reader to know
+        the layering. Precedence is strict: the env var, when present,
+        always wins over the dataclass default above.
+        """
+        self.geography_source = "config.py default"
         geo = os.environ.get("PREFERRED_GEOGRAPHY")
         if geo is not None:
             geo_normalized = geo.strip().lower()
@@ -353,3 +361,4 @@ Return a JSON object with exactly these keys:
                     f"must be one of {', '.join(VALID_GEOGRAPHIES)}"
                 )
             self.preferred_geography = geo_normalized
+            self.geography_source = "PREFERRED_GEOGRAPHY env var (from cdk.context.json)"

@@ -242,3 +242,16 @@ class TestConfigEnvironmentOverrides:
         monkeypatch.setenv("PREFERRED_GEOGRAPHY", "")
         with pytest.raises(ValueError, match="PREFERRED_GEOGRAPHY"):
             Config()
+
+    def test_source_reported_for_default(self, monkeypatch):
+        """The resolution is observable: default case names config.py."""
+        monkeypatch.delenv("PREFERRED_GEOGRAPHY", raising=False)
+        assert Config().geography_source == "config.py default"
+
+    def test_source_reported_for_override(self, monkeypatch):
+        """Override case names the env var and its origin file."""
+        monkeypatch.setenv("PREFERRED_GEOGRAPHY", "apj")
+        config = Config()
+        assert config.preferred_geography == "apj"
+        assert "PREFERRED_GEOGRAPHY" in config.geography_source
+        assert "cdk.context.json" in config.geography_source

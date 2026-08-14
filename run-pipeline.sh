@@ -135,7 +135,12 @@ for line in lines:
     
     msg = d.get('message', '')
     
-    if msg == 'RSS fetch complete':
+    if msg == 'Pipeline run started':
+        geo = d.get('preferred_geography', '?')
+        src = d.get('geography_source', '?')
+        print(f'  ⚙️  Geography preference: {geo}  (source: {src})')
+
+    elif msg == 'RSS fetch complete':
         count = d.get('total_fetched', '?')
         print(f'  📡 Fetched {count} items from RSS feed')
     

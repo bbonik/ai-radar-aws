@@ -75,7 +75,15 @@ class PipelineOrchestrator:
         announcements are recorded to the error file for retry/investigation.
         """
         start_time = datetime.now(timezone.utc)
-        self._logger.info("Pipeline run started", run_id=self._run_id)
+        # Effective config is stated up front so "what is this deployment
+        # actually running?" is the first log line of every run, never
+        # archaeology across config layers.
+        self._logger.info(
+            "Pipeline run started",
+            run_id=self._run_id,
+            preferred_geography=self._config.preferred_geography,
+            geography_source=self._config.geography_source,
+        )
 
         # Stage 1: Fetch RSS feed
         all_items = self._rss_fetcher.fetch()
