@@ -43,6 +43,13 @@ _GATE_RESERVATION_MS = 90_000
 # Per-URL fetch timeout in seconds
 _URL_FETCH_TIMEOUT = 15
 
+# Outbound fetch bounds (docs/audit-remediation-plan.md item 13).
+# These fetch URLs harvested from feed content — bound what any one page or
+# item can cost. Redirect capping was considered and dropped: urlopen
+# already errors on redirect loops, and the size cap bounds any target.
+_MAX_RESPONSE_BYTES = 2 * 1024 * 1024  # report generator uses ≤3000 chars/page
+_MAX_URLS_PER_ITEM = 8                 # at 15s each, caps one item at ~2 min
+
 
 class _TextExtractor(HTMLParser):
     """HTML parser that extracts main text content, skipping boilerplate elements."""
@@ -185,25 +192,37 @@ class ResearchAgent:
         return self._context.get_remaining_time_in_millis() > _SAFETY_MARGIN_MS
 
     def _extract_urls(self, item: RSSItem) -> list[str]:
-        """Extract unique URLs from the announcement's link and description.
+        """Extract unique https URLs from the announcement's link and description.
 
-        Returns a deduplicated list of URLs found in the item's link field
-        and any URLs embedded in the description text.
+        Returns a deduplicated list capped at _MAX_URLS_PER_ITEM, https only
+        (cleartext fetches dropped — AWS links are all https). The item's own
+        link always takes the first slot.
         """
         urls: list[str] = []
         seen: set[str] = set()
 
         # Always include the announcement's own link
-        if item.link and item.link not in seen:
+        if item.link and item.link.startswith("https://") and item.link not in seen:
             urls.append(item.link)
             seen.add(item.link)
 
         # Extract URLs from description (both href attributes and plain text)
         description_urls = self._extract_urls_from_text(item.description)
         for url in description_urls:
+            if not url.startswith("https://"):
+                continue
             if url not in seen:
                 urls.append(url)
                 seen.add(url)
+
+        if len(urls) > _MAX_URLS_PER_ITEM:
+            self._logger.warning(
+                "URL count capped for research",
+                announcement_link=item.link,
+                urls_found=len(urls),
+                urls_kept=_MAX_URLS_PER_ITEM,
+            )
+            urls = urls[:_MAX_URLS_PER_ITEM]
 
         return urls
 
@@ -244,7 +263,18 @@ class ResearchAgent:
             if "html" not in content_type.lower() and "text" not in content_type.lower():
                 return PageContent(url=url, text="", title="")
 
-            raw_bytes = response.read()
+            # Bounded read: one oversized (or hostile) page must not inflate
+            # Lambda memory — the same failure class as the historical OOMs.
+            # Over-length content is truncated, not rejected: partial page
+            # text is still useful, and downstream uses ≤3000 chars anyway.
+            raw_bytes = response.read(_MAX_RESPONSE_BYTES + 1)
+            if len(raw_bytes) > _MAX_RESPONSE_BYTES:
+                self._logger.warning(
+                    "Response truncated at size cap",
+                    url=url,
+                    cap_bytes=_MAX_RESPONSE_BYTES,
+                )
+                raw_bytes = raw_bytes[:_MAX_RESPONSE_BYTES]
             # Try to decode with charset from content-type, fallback to utf-8
             charset = self._extract_charset(content_type)
             html_content = raw_bytes.decode(charset, errors="replace")

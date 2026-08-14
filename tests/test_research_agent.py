@@ -327,3 +327,66 @@ class TestTextExtractor:
         extractor.feed("")
         assert extractor.text == ""
         assert extractor.title == ""
+
+
+class TestOutboundFetchBounds:
+    """Fetch hardening (docs/audit-remediation-plan.md item 13): size cap,
+    URL cap, https-only. Prerequisite for the multi-source track, which
+    feeds user-submitted URLs (Hacker News) into this exact code path."""
+
+    def test_url_count_capped_at_maximum(self, config, logger, mock_context_plenty_of_time):
+        from src.pipeline.research_agent import _MAX_URLS_PER_ITEM
+
+        hrefs = " ".join(
+            f'<a href="https://example.com/p{i}">x</a>' for i in range(20)
+        )
+        item = RSSItem(title="t", description=hrefs, pub_date="2025-01-15",
+                       link="https://aws.amazon.com/whats-new/cap-test")
+        agent = ResearchAgent(config=config, context=mock_context_plenty_of_time, logger=logger)
+
+        urls = agent._extract_urls(item)
+
+        assert len(urls) == _MAX_URLS_PER_ITEM
+        assert urls[0] == item.link  # own link always keeps the first slot
+
+    def test_http_urls_are_dropped(self, config, logger, mock_context_plenty_of_time):
+        item = RSSItem(
+            title="t",
+            description='<a href="http://insecure.example.com/page">x</a> '
+                        '<a href="https://secure.example.com/page">y</a>',
+            pub_date="2025-01-15",
+            link="https://aws.amazon.com/whats-new/scheme-test",
+        )
+        agent = ResearchAgent(config=config, context=mock_context_plenty_of_time, logger=logger)
+
+        urls = agent._extract_urls(item)
+
+        assert "https://secure.example.com/page" in urls
+        assert all(u.startswith("https://") for u in urls)
+
+    def test_oversized_response_truncated_not_raised(
+        self, config, logger, mock_context_plenty_of_time
+    ):
+        from src.pipeline.research_agent import _MAX_RESPONSE_BYTES
+
+        big_html = b"<html><title>big</title><body>" + b"A" * (_MAX_RESPONSE_BYTES + 100_000)
+
+        class FakeResponse:
+            headers = {"Content-Type": "text/html; charset=utf-8"}
+            def read(self, n=-1):
+                return big_html[:n] if n and n > 0 else big_html
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+
+        FakeResponse.headers = MagicMock()
+        FakeResponse.headers.get = lambda k, d="": "text/html; charset=utf-8"
+
+        agent = ResearchAgent(config=config, context=mock_context_plenty_of_time, logger=logger)
+        with patch("src.pipeline.research_agent.urlopen", return_value=FakeResponse()):
+            page = agent._fetch_and_extract("https://example.com/huge")
+
+        # Truncated, decoded, and extracted — no exception, bounded memory
+        assert page.title == "big"
+        assert len(page.text) <= _MAX_RESPONSE_BYTES
