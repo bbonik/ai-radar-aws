@@ -6,9 +6,21 @@ Changes take effect on next Lambda execution without redeployment.
 
 No sensitive values (API keys, credentials) are stored in this file.
 All credentials come from IAM roles at runtime.
+
+Deployment-specific overrides:
+    Committed defaults are generic. Per-deployment values live in a gitignored
+    cdk.context.json (see README: "Configuring Your Own Deployment"). The CDK
+    stack injects them into the Lambdas as environment variables, which
+    __post_init__ applies over the defaults. Currently the only such value is
+    PREFERRED_GEOGRAPHY. Note: an environment override wins even over a value
+    passed explicitly to the constructor.
 """
 
+import os
 from dataclasses import dataclass, field
+
+# Valid values for preferred_geography / PREFERRED_GEOGRAPHY
+VALID_GEOGRAPHIES = ("apj", "emea", "americas", "global")
 
 
 @dataclass
@@ -323,3 +335,15 @@ Return a JSON object with exactly these keys:
     # Lambda 2
     website_builder_function_name: str = "ai-radar-website-builder"
     website_builder_timeout: int = 600  # 10 minutes in seconds
+
+    def __post_init__(self) -> None:
+        """Apply per-deployment environment overrides (see module docstring)."""
+        geo = os.environ.get("PREFERRED_GEOGRAPHY")
+        if geo is not None:
+            geo_normalized = geo.strip().lower()
+            if geo_normalized not in VALID_GEOGRAPHIES:
+                raise ValueError(
+                    f"Invalid PREFERRED_GEOGRAPHY value {geo!r}: "
+                    f"must be one of {', '.join(VALID_GEOGRAPHIES)}"
+                )
+            self.preferred_geography = geo_normalized

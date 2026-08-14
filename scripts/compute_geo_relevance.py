@@ -17,6 +17,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import boto3
 
+from scripts._common import load_context_env
+
+load_context_env()  # Apply per-deployment overrides before Config is constructed
+
 from src.config import Config
 from src.pipeline.importance_classifier import (
     GEOGRAPHY_KEYWORDS,

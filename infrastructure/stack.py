@@ -377,6 +377,15 @@ class AiRadarAwsStack(Stack):
             },
         )
 
+        # Per-deployment runtime override (from gitignored cdk.context.json).
+        # Absent context → Config's generic default applies. See README:
+        # "Configuring Your Own Deployment".
+        preferred_geography = self.node.try_get_context("preferred_geography")
+        if preferred_geography:
+            self.report_pipeline_lambda.add_environment(
+                "PREFERRED_GEOGRAPHY", str(preferred_geography)
+            )
+
         # ─── EventBridge Rule ─────────────────────────────────────────────
         # Triggers Lambda 1 at the configured daily schedule
         self.schedule_rule = events.Rule(

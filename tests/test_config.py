@@ -203,3 +203,42 @@ class TestConfigPromptTemplates:
         """Graph prompt template should contain format placeholders."""
         assert "{title}" in config.graph_prompt_template
         assert "{description}" in config.graph_prompt_template
+
+
+class TestConfigEnvironmentOverrides:
+    """Per-deployment overrides via environment variables.
+
+    Committed defaults are generic; deployment-specific values arrive as env
+    vars injected by the CDK stack from the gitignored cdk.context.json
+    (see README: "Configuring Your Own Deployment").
+    """
+
+    def test_no_env_var_uses_default(self, monkeypatch):
+        monkeypatch.delenv("PREFERRED_GEOGRAPHY", raising=False)
+        assert Config().preferred_geography == Config.preferred_geography
+
+    def test_env_var_overrides_default(self, monkeypatch):
+        monkeypatch.setenv("PREFERRED_GEOGRAPHY", "emea")
+        assert Config().preferred_geography == "emea"
+
+    def test_env_var_is_normalised(self, monkeypatch):
+        """Whitespace and case are tolerated."""
+        monkeypatch.setenv("PREFERRED_GEOGRAPHY", "  Americas ")
+        assert Config().preferred_geography == "americas"
+
+    def test_all_valid_geographies_accepted(self, monkeypatch):
+        for geo in ("apj", "emea", "americas", "global"):
+            monkeypatch.setenv("PREFERRED_GEOGRAPHY", geo)
+            assert Config().preferred_geography == geo
+
+    def test_invalid_env_var_raises_clear_error(self, monkeypatch):
+        """A bad value must fail loudly, never silently fall back."""
+        monkeypatch.setenv("PREFERRED_GEOGRAPHY", "narnia")
+        with pytest.raises(ValueError, match="PREFERRED_GEOGRAPHY"):
+            Config()
+
+    def test_empty_env_var_raises(self, monkeypatch):
+        """An empty value is a misconfiguration, not an absence."""
+        monkeypatch.setenv("PREFERRED_GEOGRAPHY", "")
+        with pytest.raises(ValueError, match="PREFERRED_GEOGRAPHY"):
+            Config()

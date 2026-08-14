@@ -128,23 +128,23 @@ class TestLambdaConfiguration:
             },
         )
 
-    def test_lambda1_memory_512mb(self, template):
-        """Lambda 1 should have 512MB memory."""
+    def test_lambda1_memory_1024mb(self, template):
+        """Lambda 1 should have 1024MB memory (raised from 512 after OOM with large CSV)."""
         template.has_resource_properties(
             "AWS::Lambda::Function",
             {
                 "FunctionName": "ai-radar-report-pipeline",
-                "MemorySize": 512,
+                "MemorySize": 1024,
             },
         )
 
-    def test_lambda2_memory_512mb(self, template):
-        """Lambda 2 should have 512MB memory."""
+    def test_lambda2_memory_1024mb(self, template):
+        """Lambda 2 should have 1024MB memory (matches stack; raised alongside Lambda 1)."""
         template.has_resource_properties(
             "AWS::Lambda::Function",
             {
                 "FunctionName": "ai-radar-website-builder",
-                "MemorySize": 512,
+                "MemorySize": 1024,
             },
         )
 
@@ -415,3 +415,40 @@ class TestEventBridgeSchedule:
                 "Targets": assertions.Match.any_value(),
             },
         )
+
+
+class TestDeploymentContextInjection:
+    """Per-deployment context flows into Lambda env vars; absence degrades cleanly."""
+
+    def test_preferred_geography_injected_when_context_set(self):
+        app = cdk.App(context={"preferred_geography": "apj"})
+        stack = AiRadarAwsStack(
+            app, "CtxTestStack", env=cdk.Environment(region=Config().aws_region)
+        )
+        template = assertions.Template.from_stack(stack)
+        template.has_resource_properties(
+            "AWS::Lambda::Function",
+            {
+                "FunctionName": "ai-radar-report-pipeline",
+                "Environment": {
+                    "Variables": assertions.Match.object_like(
+                        {"PREFERRED_GEOGRAPHY": "apj"}
+                    )
+                },
+            },
+        )
+
+    def test_no_context_synthesizes_without_geography_env(self):
+        """The fresh-clone path: no cdk.context.json, no override, still synthesizes."""
+        app = cdk.App()
+        stack = AiRadarAwsStack(
+            app, "NoCtxTestStack", env=cdk.Environment(region=Config().aws_region)
+        )
+        template = assertions.Template.from_stack(stack)
+        functions = template.find_resources(
+            "AWS::Lambda::Function",
+            {"Properties": {"FunctionName": "ai-radar-report-pipeline"}},
+        )
+        assert len(functions) == 1
+        env_vars = list(functions.values())[0]["Properties"]["Environment"]["Variables"]
+        assert "PREFERRED_GEOGRAPHY" not in env_vars

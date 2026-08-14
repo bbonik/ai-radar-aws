@@ -238,25 +238,26 @@ All tunable parameters live in `src/config.py`:
 
 No secrets in the repository — all credentials come from IAM roles at runtime.
 
-### Custom Domain (Optional)
+### Configuring Your Own Deployment
 
-To use a custom domain instead of the CloudFront URL, add these to the `context` section of `cdk.json`:
+Deployment-specific values live in a gitignored `cdk.context.json` at the project root — never in committed files. Copy the example and edit:
 
-```json
-{
-  "context": {
-    "custom_domain": "your-site.example.com",
-    "certificate_arn": "arn:aws:acm:us-east-1:ACCOUNT:certificate/ID",
-    "hosted_zone_id": "Z0123456789..."
-  }
-}
+```bash
+cp cdk.context.json.example cdk.context.json
 ```
 
-Prerequisites:
+| Key | Purpose | If absent |
+|-----|---------|-----------|
+| `custom_domain` | Serve the site on your own domain | Default CloudFront URL is used |
+| `certificate_arn` | ACM certificate for the custom domain | Required only with `custom_domain` |
+| `hosted_zone_id` | Route 53 zone for the domain's alias record | No DNS record created |
+| `preferred_geography` | Geographic scoring bias: `apj`, `emea`, `americas`, or `global` | Default from `src/config.py` (no per-deployment bias) |
+
+Every key is optional: a fresh clone with no `cdk.context.json` deploys to a fully working default state. The CDK stack injects runtime values (currently `preferred_geography`) into the Lambdas as environment variables, and the utility scripts read the same file, so laptop and Lambda always resolve identical configuration.
+
+Custom domain prerequisites:
 - An ACM certificate for your domain, already validated (must be in **us-east-1** regardless of your stack's region — this is a CloudFront requirement)
 - A Route 53 hosted zone for the parent domain
-
-If these values are absent, the stack deploys with the default CloudFront URL.
 
 ## 💰 Estimated Monthly Cost
 
