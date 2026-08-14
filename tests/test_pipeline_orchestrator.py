@@ -11,6 +11,7 @@ from src.config import Config
 from src.pipeline.orchestrator import PipelineOrchestrator
 from src.shared.logger import StructuredLogger
 from src.shared.models import (
+    AnnouncementTags,
     AnnouncementError,
     PipelineRunSummary,
     ProcessedAnnouncement,
@@ -624,3 +625,66 @@ class TestErrorRecordSaving:
         # First item failed (storage), second succeeded
         assert summary.total_failed == 1
         assert summary.total_processed_ok == 1
+
+
+# --- Item 15: explicit stage attribution (docs/audit-remediation-plan.md) ---
+
+
+class TestStageAttribution:
+    """The error record's stage column reflects where the failure occurred,
+    tracked explicitly — not guessed from exception-message substrings."""
+
+    def _orchestrator_with_happy_path(self, config, mock_context, logger,
+                                      sample_research, sample_report):
+        orch = _create_orchestrator_with_mocks(config, mock_context, logger)
+        orch._tagger = MagicMock()
+        orch._tagger.tag.return_value = AnnouncementTags()
+        orch._importance_classifier.classify.return_value = (2, 4.5)
+        orch._research_agent.research.return_value = sample_research
+        orch._report_generator.generate.return_value = sample_report
+        orch._graph_generator.generate.return_value = None
+        orch._storage_manager.save_announcement.return_value = True
+        return orch
+
+    @pytest.mark.parametrize(
+        "component,method,expected_stage",
+        [
+            ("_tagger", "tag", "tagging"),
+            ("_importance_classifier", "classify", "classification"),
+            ("_research_agent", "research", "research"),
+            ("_graph_generator", "generate", "graph_generation"),
+            ("_storage_manager", "save_announcement", "storage"),
+        ],
+    )
+    def test_failure_stage_matches_failing_component(
+        self, config, mock_context, logger, sample_items, sample_research,
+        sample_report, component, method, expected_stage,
+    ):
+        orch = self._orchestrator_with_happy_path(
+            config, mock_context, logger, sample_research, sample_report
+        )
+        # The message deliberately contains misleading keywords that the old
+        # substring-sniffing would have filed under the wrong stage.
+        getattr(getattr(orch, component), method).side_effect = RuntimeError(
+            "error fetching url for report generation graph storage"
+        )
+
+        success, _, failure_info = orch._process_announcement(sample_items[0])
+
+        assert success is False
+        assert failure_info["stage"] == expected_stage
+
+    def test_report_generation_error_keeps_specific_stage(
+        self, config, mock_context, logger, sample_items, sample_research, sample_report
+    ):
+        from src.pipeline.report_generator import ReportGenerationError
+
+        orch = self._orchestrator_with_happy_path(
+            config, mock_context, logger, sample_research, sample_report
+        )
+        orch._report_generator.generate.side_effect = ReportGenerationError("boom")
+
+        success, _, failure_info = orch._process_announcement(sample_items[0])
+
+        assert success is False
+        assert failure_info["stage"] == "report_generation"
