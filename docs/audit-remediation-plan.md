@@ -126,20 +126,20 @@ CDK deploys, CDK deploys before data migrations.
 | 4 | Serialise pipeline runs | 1 | Medium | CDK deploy | DONE 2026-08-14 (deployed) |
 | 5 | Fail loudly on CSV schema drift | 1 | High | Code only | DONE 2026-08-14 (deployed) |
 | 6 | Slug collisions | 2 | High | Data + site migration | DONE 2026-08-14 |
-| 7 | Relevance filter accuracy | 2 | Medium | Analysis first | NEEDS DECISION (data) |
-| 8 | Research time budget | 2 | Medium | Code only | TODO |
-| 9 | Account identifiers out of the repo | 3 | High | Config only | TODO (D2 resolved) |
+| 7 | Relevance filter accuracy | 2 | Medium | Analysis first | MEASURED 2026-08-14 — data + recommendation in item; awaiting owner sign-off on "no change" |
+| 8 | Research time budget | 2 | Medium | Code only | DONE 2026-08-14 (deployed) |
+| 9 | Account identifiers out of the repo | 3 | High | Config only | DONE 2026-08-14 (working tree clean; history accepted per D2) |
 | 10 | Stop bundling local files into Lambdas | 3 | High | CDK deploy | DONE 2026-08-14 (pulled forward — was blocking deploys: `cdk.out/**` missed dot-dirs, 29 GB snowball, >2 GiB asset crash) |
-| 11 | Tighten CSP and Mermaid | 3 | Medium | CDK deploy + rebuild | TODO |
-| 12 | Analytics: throttle + de-identify (WAF deferred) | 3 | Medium | CDK deploy + code | TODO |
-| 13 | Harden outbound fetching | 3 | High | Code only | TODO |
-| 14 | Scope IAM down | 3 | Medium | CDK deploy | **DEFERRED** |
-| 15 | Failure visibility (stage variable only) | 4 | Low | Code only | TODO |
-| 16 | CSV storage growth | 4 | Medium | Document only | TODO (D8 resolved) |
-| 17 | Dead code and doc drift | 5 | Low | Code only | TODO |
-| 18 | Utility scripts honour `Config` | 3 | Medium | Code only | TODO |
-| 19 | CI workflow + zero-config synth guard | 0 | High | New file | TODO |
-| 20 | Neutral generic defaults (`preferred_geography`) | 3 | Medium | Code + local config | TODO (D9 resolved) |
+| 11 | Tighten CSP and Mermaid | 3 | Medium | CDK deploy + rebuild | DONE 2026-08-14 (live header verified) |
+| 12 | Analytics: throttle + de-identify (WAF deferred) | 3 | Medium | CDK deploy + code | DONE 2026-08-14 (stored /24 verified; also fixed latent v1/v2 payload bug — IP had never been captured) |
+| 13 | Harden outbound fetching | 3 | High | Code only | DONE 2026-08-14 (deployed) |
+| 14 | Scope IAM down | 3 | Medium | CDK deploy | **DEFERRED** (accepted risk, revisit trigger in Appendix B) |
+| 15 | Failure visibility (stage variable only) | 4 | Low | Code only | DONE 2026-08-14 |
+| 16 | CSV storage growth | 4 | Medium | Document only | DONE 2026-08-14 (growth doc in item; JSONL recommended for AI-news track) |
+| 17 | Dead code and doc drift | 5 | Low | Code only | DONE 2026-08-14 (−180 lines; design.md deviations appendix) |
+| 18 | Utility scripts honour `Config` | 3 | Medium | Code only | DONE 2026-08-14 |
+| 19 | CI workflow + zero-config synth guard | 0 | High | New file | DONE 2026-08-14 (all steps simulated locally; runs on first push) |
+| 20 | Neutral generic defaults (`preferred_geography`) | 3 | Medium | Code + local config | DONE 2026-08-14 (generic=global; this deployment=apj via env) |
 
 Items 0, 18, 19 and 20 were added after establishing the dual-audience requirement. They
 are what make the repository genuinely re-deployable by a third party; without them the
@@ -871,9 +871,40 @@ Extend `tests/test_relevance_filter.py` with a labelled corpus — one case per 
 changed, asserting both directions (admitted when it should be, rejected when it
 should not). The existing property test on word-boundary matching must still pass.
 
-### Open questions
+### Measurement results (2026-08-14, live feed of 100 items + 252 stored known-relevant)
 
-Needs the measurement run first. No code change proposed until you have seen the numbers.
+**7a — exclusions:** the three patterns hit only genuine Amazon Connect
+announcements on the live feed (6/3/2 items, all "Amazon Connect Customer ...")
+and would have excluded **zero** of the 252 known-relevant stored items. The
+feared AgentCore-connectivity false negative has not occurred in practice —
+likely because AgentCore titles say "AgentCore", which the exclusion regex
+`\bconnect\b` does not match. **Risk lower than assessed.**
+
+**7b — risky single-word inclusions:** `nova, lex, forecast, translate,
+personalize, comprehend, polly, transcribe` admitted **zero** items uniquely in
+either corpus — currently harmless but also currently useless. The one real
+offender is **`\bagents\b`**: it uniquely admitted 3 feed items of which 2 are
+Amazon Connect noise ("agent-first callbacks", "agent workspace") that only
+the exclusion patterns rescue, and it is the sole admitter for 10 stored items
+— of which several look like weak relevance ("ECS Managed Daemons",
+"OpenSearch Serverless GA"). So `\bagents\b` is doing real work and real harm
+simultaneously.
+
+**Dead patterns:** 39 of the inclusion patterns matched nothing in either
+corpus (all the classic-ML service names — rekognition, textract, kendra,
+etc.). Harmless to keep (they cost nothing and those services may reappear);
+removing them would be churn, not simplification.
+
+### Recommendation for your review — no change made yet
+
+1. Keep the exclusions as-is: measured false-negative rate is zero.
+2. Leave the dormant single-word patterns: zero measured cost either way.
+3. The only candidate worth acting on is `\bagents\b`. Options: (a) leave it —
+   the Connect exclusions already catch the noise it admits, and it earns 10
+   stored items; (b) require a co-occurring AI term. The data mildly favours
+   (a): its noise is already neutralised downstream, and (b) risks losing the
+   10 items it legitimately catches. **Proposed resolution: no code change;
+   revisit only if Connect-adjacent noise starts passing the exclusions.**
 
 ---
 
@@ -1515,17 +1546,37 @@ Options to document, with rough thresholds to be computed properly during the wr
   largest change, since the builder, all seven backfill scripts, and `backup.py` all
   read the single CSV today.
 
-### Deliverable
+### Growth characteristics (measured 2026-08-14) — the item 16 deliverable
 
-A section added to this document (or a separate `docs/storage-growth.md` if it grows
-large) covering: measured current size and per-announcement average, the transfer volume
-formula, the memory ceiling, the volume at which each option becomes necessary, and a
-recommendation for the AI-news track's own file. No code changes under this item.
+Current state: **2.57 MB / 252 announcements ≈ 10.2 KB per announcement**
+(dominated by the six report sections and the Mermaid code). Growth at the
+observed ~16 relevant items/week ≈ **8.5 MB/year**.
 
-### Open questions
+Per-run cost of the append-by-rewrite pattern: each of *n* new items downloads
+and re-uploads the whole file, so one run transfers ≈ `n × file_size` each
+way. At today's numbers a 3-item run moves ~8 MB — irrelevant. The binding
+constraint is **Lambda memory during a single append**: the file is held as
+one decoded string plus a StringIO copy, so peak ≈ 2–3× file size on top of
+the ~200 MB baseline. At 1024 MB, the comfortable ceiling is roughly a
+**150–250 MB file (~15,000–25,000 announcements, ~18+ years of the AWS track
+alone)**. The earlier OOM at "34 MB" was the quote-doubling corruption
+inflating the file, not honest growth.
 
-D8. Also worth deciding whether the AI-news track should adopt the target format from
-the outset rather than copying the CSV approach and migrating both later.
+Thresholds to act on:
+- **> ~30 items per run** (multi-source Run_Item_Cap territory): the n×size
+  transfer starts adding minutes; batch the run's appends into one
+  read-modify-write, or move to JSONL append. Code change measured in hours.
+- **> ~50 MB file**: move the website builder to streaming reads and consider
+  JSONL. Still years away for the AWS track.
+
+**Recommendation for the AI-news track (multi-source spec, Requirement 10.7):
+start on JSONL, not CSV.** It removes the read-modify-write entirely, has no
+schema-header coupling (dissolving the Item 5 failure class for that track),
+and costs nothing extra while the track is greenfield. The AWS track stays on
+CSV until one of the thresholds above is crossed — migrating it now would be
+churn with no measured benefit.
+
+D8 resolved: document only, adopt-better-format-at-greenfield for the new track.
 
 ---
 
