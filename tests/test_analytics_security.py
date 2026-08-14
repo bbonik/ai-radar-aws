@@ -144,3 +144,30 @@ class TestCorsOriginEcho:
         event = _make_event({"event_type": "invalid_type"})
         result = handler(event, None)
         assert result["headers"]["Access-Control-Allow-Origin"] == "*"
+
+
+    def test_http_api_v2_payload_ip_is_read_and_truncated(self, monkeypatch):
+        """The production payload shape: HTTP API v2 puts the IP under
+        requestContext.http. The old v1 read meant every stored event had
+        source_ip='unknown' — found during item 12 live verification."""
+        import src.analytics.handler as h
+
+        written = {}
+
+        class FakeS3:
+            def put_object(self, **kwargs):
+                written.update(kwargs)
+
+        monkeypatch.setenv("LOGS_BUCKET_NAME", "test-bucket")
+        monkeypatch.setattr(h.boto3, "client", lambda *_a, **_k: FakeS3())
+
+        event = {
+            "body": json.dumps({"event_type": "pageview", "path": "/x"}),
+            "requestContext": {"http": {"sourceIp": "198.51.100.23"}},
+            "headers": {"user-agent": "test"},
+        }
+        result = handler(event, None)
+
+        assert result["statusCode"] == 200
+        record = json.loads(written["Body"].decode())
+        assert record["source_ip"] == "198.51.100.0/24"

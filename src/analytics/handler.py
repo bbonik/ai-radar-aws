@@ -91,9 +91,17 @@ def handler(event, context):
     # Enrich each event with server-side metadata
     now = datetime.now(timezone.utc)
     date_prefix = now.strftime("%Y-%m-%d")
-    source_ip = truncate_ip(
-        event.get("requestContext", {}).get("identity", {}).get("sourceIp", "unknown")
+    # HTTP API payload v2.0 carries the source IP at requestContext.http;
+    # the old read targeted the REST-API v1 shape (requestContext.identity),
+    # which does not exist here — so source_ip had been "unknown" on every
+    # event ever stored. v1 kept as fallback for local tests.
+    request_context = event.get("requestContext", {})
+    raw_ip = (
+        request_context.get("http", {}).get("sourceIp")
+        or request_context.get("identity", {}).get("sourceIp")
+        or "unknown"
     )
+    source_ip = truncate_ip(raw_ip)
     user_agent = event.get("headers", {}).get(
         "User-Agent", event.get("headers", {}).get("user-agent", "unknown")
     )
