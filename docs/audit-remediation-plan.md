@@ -119,17 +119,17 @@ CDK deploys, CDK deploys before data migrations.
 
 | ID | Item | Phase | Severity | Blast radius | Status |
 |----|------|-------|----------|--------------|--------|
-| 0 | Configuration architecture (prerequisite for 2, 9, 20) | 0 | High | Config + docs | TODO (D9 resolved) |
-| 1 | Protect the data bucket | 0 | Critical | CDK deploy | TODO |
-| 2 | Wire alarms and budget to SNS | 0 | Critical | CDK deploy | TODO (D1 optional) |
-| 3 | Fix the links-index write path | 1 | Critical | Code only | TODO |
-| 4 | Serialise pipeline runs | 1 | Medium | CDK deploy | TODO |
-| 5 | Fail loudly on CSV schema drift | 1 | High | Code only | TODO |
-| 6 | Slug collisions | 2 | High | Data + site migration | TODO (D3 tweaks welcome) |
+| 0 | Configuration architecture (prerequisite for 2, 9, 20) | 0 | High | Config + docs | DONE 2026-08-14 |
+| 1 | Protect the data bucket | 0 | Critical | CDK deploy | DONE 2026-08-14 (deployed, data ETag-verified) |
+| 2 | Wire alarms and budget to SNS | 0 | Critical | CDK deploy | DONE 2026-08-14 (subscription confirmed, test alert received) |
+| 3 | Fix the links-index write path | 1 | Critical | Code only | DONE 2026-08-14 (deployed) |
+| 4 | Serialise pipeline runs | 1 | Medium | CDK deploy | DONE 2026-08-14 (deployed) |
+| 5 | Fail loudly on CSV schema drift | 1 | High | Code only | DONE 2026-08-14 (deployed) |
+| 6 | Slug collisions | 2 | High | Data + site migration | DONE 2026-08-14 |
 | 7 | Relevance filter accuracy | 2 | Medium | Analysis first | NEEDS DECISION (data) |
 | 8 | Research time budget | 2 | Medium | Code only | TODO |
 | 9 | Account identifiers out of the repo | 3 | High | Config only | TODO (D2 resolved) |
-| 10 | Stop bundling local files into Lambdas | 3 | High | CDK deploy | TODO |
+| 10 | Stop bundling local files into Lambdas | 3 | High | CDK deploy | DONE 2026-08-14 (pulled forward — was blocking deploys: `cdk.out/**` missed dot-dirs, 29 GB snowball, >2 GiB asset crash) |
 | 11 | Tighten CSP and Mermaid | 3 | Medium | CDK deploy + rebuild | TODO |
 | 12 | Analytics: throttle + de-identify (WAF deferred) | 3 | Medium | CDK deploy + code | TODO |
 | 13 | Harden outbound fetching | 3 | High | Code only | TODO |
@@ -661,8 +661,17 @@ Unit test: CSV whose header lacks a column present in the row dict → raises
 
 ## Item 6 — Slug collisions
 
-**Status**: TODO — D4 resolved (no stubs, no alias map); D3 default adopted, knobs
-below open to your tweaks · **Severity**: High · **Covers**: finding A
+**Status**: DONE (6a + 6b completed and verified 2026-08-14) · **Severity**: High ·
+**Covers**: finding A
+
+> **Analytics cutover record (per D4 resolution):** report slugs changed format on
+> **2026-08-14**. `report_click` / pageview events before that date reference old-format
+> slugs (whole-URL, 80-char cap); events after reference `<tail>-<8-char-hash>`. Both
+> formats are pure functions of the announcement link, so a mapping can be regenerated
+> at any time from the CSV's `link` column plus the two functions (old one in git
+> history at `66becea^`). Migration executed: 246 orphaned old-slug pages deleted,
+> 249 current pages verified present, the 4 previously-unreachable reports confirmed
+> serving their own content, CloudFront invalidated.
 
 ### Evidence — verified against live data 2026-08-13
 
