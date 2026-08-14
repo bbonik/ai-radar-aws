@@ -115,11 +115,12 @@ class ImportanceClassifier:
     """Classifies announcements by importance using a point-based scoring system.
 
     The score is computed as:
-        service_tier_points + (blogpost_points if has_links else 0) + (word_count × word_count_scale)
+        service_tier_points + link_score + (word_count × word_count_scale)
+        + tag_modifier + instance_penalty + region_geography_modifier
 
-    Service tiers:
-        - High: Amazon Bedrock, Amazon Bedrock AgentCore, Amazon SageMaker AI, Amazon QuickSight
-        - Medium: SageMaker, SageMaker Unified Studio, Kiro
+    Service tiers (see HIGH_TIER_TAGS / MEDIUM_TIER_TAGS for the authoritative sets):
+        - High: Bedrock, Bedrock AgentCore, SageMaker AI
+        - Medium: SageMaker (+ JumpStart/HyperPod/Unified Studio), Kiro, QuickSight/Quick
         - Base: All other relevant services
 
     Star mapping:
@@ -199,64 +200,13 @@ class ImportanceClassifier:
         "quicksight", "quick", "quick-suite", "kiro", "q-developer",
     }
 
-    def compute_geo_relevance(self, item: RSSItem, tags: AnnouncementTags | None = None) -> str:
-        """Determine geographic relevance of an announcement.
-
-        Logic (in order):
-        1. "all regions" keywords → "global"
-        2. Preferred geography keywords found → "local"
-        3. Any non-preferred geography keywords found → "" (region-specific, not for you)
-        4. No regions detected at all + GA/new-feature on APJ service → "global" (inferred)
-        5. Otherwise → ""
-
-        Returns:
-            "local" — explicitly mentions the user's preferred geography
-            "global" — all regions, or inferred global for GA/new-feature (no region mentioned)
-            "" — not relevant or unknown
-        """
-        preferred = self.config.preferred_geography.lower()
-        if preferred == "global":
-            return ""  # No preference → no badge needed
-
-        text = (item.title + " " + item.description).lower()
-
-        # Step 1: Check for "all regions" / global availability keywords
-        for keyword in GLOBAL_AVAILABILITY_KEYWORDS:
-            if keyword in text:
-                return "global"
-
-        # Step 2: Check if preferred geography is explicitly mentioned
-        preferred_mentioned = False
-        if preferred in GEOGRAPHY_KEYWORDS:
-            for keyword in GEOGRAPHY_KEYWORDS[preferred]:
-                if geo_keyword_in_text(keyword, text):
-                    preferred_mentioned = True
-                    break
-
-        if preferred_mentioned:
-            return "local"
-
-        # Step 3: Check if ANY non-preferred geography is mentioned
-        any_region_mentioned = False
-        for geography, keywords in GEOGRAPHY_KEYWORDS.items():
-            if geography == preferred:
-                continue
-            for keyword in keywords:
-                if geo_keyword_in_text(keyword, text):
-                    any_region_mentioned = True
-                    break
-            if any_region_mentioned:
-                break
-
-        if any_region_mentioned:
-            return ""  # Region-specific to somewhere else
-
-        # Step 4: No regions detected — infer global for GA/new-feature on APJ-available service
-        if tags and ("ga-launch" in tags.types or "new-feature" in tags.types):
-            if any(svc in self.APJ_AVAILABLE_SERVICES for svc in tags.services):
-                return "global"
-
-        return ""
+    # NOTE: geographic relevance for the card badges is computed by
+    # orchestrator._resolve_geo_relevance (multi-geo, comma-separated). A
+    # second implementation used to live here with a different return
+    # contract (local/global/"") and no production callers — removed in
+    # docs/audit-remediation-plan.md item 17b to leave exactly one place
+    # to edit. This class contributes geography only via the
+    # region-expansion scoring modifier below.
 
     def compute_score(self, item: RSSItem, tags: AnnouncementTags | None = None) -> float:
         """Compute the raw importance score for an item.
@@ -527,35 +477,6 @@ class ImportanceClassifier:
                 return self.config.service_points_medium
 
         return self.config.service_points_base
-
-    def _has_blogpost_links(self, item: RSSItem) -> bool:
-        """Check if the item description contains external blogpost links.
-
-        Looks for URLs (http:// or https://) in the description that are
-        NOT the AWS whats-new URL (the item's own link) and NOT just a
-        service homepage.
-
-        Args:
-            item: The RSS item to check.
-
-        Returns:
-            True if external blogpost links are found.
-        """
-        urls = self._url_pattern.findall(item.description)
-
-        for url in urls:
-            url = _clean_url(url)
-            if not url:
-                continue
-            # Exclude the item's own AWS whats-new link
-            if url.startswith("https://aws.amazon.com/about-aws/whats-new/"):
-                continue
-            # Exclude AWS service homepages (e.g., https://aws.amazon.com/transform)
-            if re.match(r"https?://aws\.amazon\.com/[a-z0-9-]+/?$", url):
-                continue
-            return True
-
-        return False
 
     def _score_to_stars(self, score: float) -> int:
         """Map a raw score to a star level using configured thresholds.

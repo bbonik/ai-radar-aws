@@ -112,7 +112,7 @@ class ProcessedAnnouncement:
     description: str
     pub_date: str
     link: str
-    importance_level: int  # 1, 2, or 3
+    importance_level: int  # 1–5 stars
     importance_score: float
     report: Report
     mermaid_graph: str | None  # None for 1-star

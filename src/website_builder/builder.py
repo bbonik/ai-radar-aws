@@ -1797,7 +1797,7 @@ JS_TEMPLATE = """\
       if (time === 'week') count = weekCount;
       else if (time === 'month') count = monthCount;
       else if (time === '3months') count = threeMonthCount;
-      var label = btn.textContent.replace(/\s*\(\d+\)/, '');
+      var label = btn.textContent.replace(/\\s*\\(\\d+\\)/, '');
       btn.textContent = label + ' (' + count + ')';
     });
   }

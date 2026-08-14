@@ -293,9 +293,6 @@ pytest tests/test_cdk_stack.py -v
 
 # Format code
 black src/ tests/
-
-# Type checking
-mypy src/
 ```
 
 ## 📄 License

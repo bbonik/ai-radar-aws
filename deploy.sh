@@ -138,8 +138,19 @@ pip install -q -r requirements-dev.txt
 pip install -q aws-cdk-lib constructs
 
 # ─── Run tests ───────────────────────────────────────────────────────────────
+# Full output goes to a log; on failure the whole log is shown (the old
+# `| tail -5` cut off the actual assertion on most failures).
 echo -e "${YELLOW}▸ Running tests...${NC}"
-python -m pytest tests/ -q --tb=short 2>&1 | tail -5
+TEST_LOG=$(mktemp)
+if python -m pytest tests/ -q --tb=short > "$TEST_LOG" 2>&1; then
+    tail -2 "$TEST_LOG"
+else
+    cat "$TEST_LOG"
+    rm -f "$TEST_LOG"
+    echo -e "${RED}✗ Tests failed — aborting deploy.${NC}"
+    exit 1
+fi
+rm -f "$TEST_LOG"
 
 # ─── Bootstrap CDK (if needed) ───────────────────────────────────────────────
 echo -e "${YELLOW}▸ Bootstrapping CDK (if needed)...${NC}"

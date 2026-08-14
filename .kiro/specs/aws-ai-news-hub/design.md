@@ -784,3 +784,28 @@ This feature is well-suited for property-based testing because it contains multi
 - CloudWatch alarms exist for both Lambdas (errors, timeout, duration)
 - Lambda 1 has permission to invoke Lambda 2
 - Lambda 1 has permission to write to error file path in S3
+
+
+---
+
+## Deviations since implementation
+
+This document is the historical record of the original design; the code has
+since evolved. Rather than rewriting the spec (which would lose the record of
+what was intended), material deviations are listed here. See
+`docs/audit-remediation-plan.md` for the reasoning behind the 2026-08-14 items.
+
+| Area | Spec says | Current behaviour |
+|---|---|---|
+| Star scale | 1–3 stars throughout | 1–5 stars; graphs generated for 2★+ |
+| CSV schema | `aws_service` column | Retired (commit `1df4d6c`) in favour of taxonomy `tags.services`; `tags`, `card_summary`, `geo_relevance` columns added |
+| Report sections | Six | Seven — `card_summary` added |
+| Scoring formula | service + blogpost + word count | Plus tiered link scoring, tag modifiers, instance penalty, geography modifier, 2★ floor for high/medium tiers |
+| Slug format | (unspecified) | `<last-path-segment>-<8-char-hash>` since 2026-08-14 (collision fix) |
+| Research gate | Reserve full per-item timeout | Fixed 90 s gate + in-loop deadline; budget is a ceiling (Property 7 amended) |
+| Dedup store | CSV scan | Lightweight `database/links.txt` index with damaged-index self-heal |
+| Storage write order | (unspecified) | Links index first, then CSV — crash skips rather than duplicates |
+| Data bucket | (unspecified) | Versioned + RETAIN; `deploy.sh --destroy` two-step confirmation |
+| Alarms | Defined, unwired | All publish to SNS `ai-radar-alerts`; budget notifies when `alert_email` configured |
+| Tagging/analytics | Not in original spec | Added in changelog batches 2–3; analytics IPs truncated at ingest (/24, /48) |
+| Config | Committed values only | Per-deployment values in gitignored `cdk.context.json`; `preferred_geography` default is `global` |
