@@ -452,3 +452,36 @@ class TestDeploymentContextInjection:
         assert len(functions) == 1
         env_vars = list(functions.values())[0]["Properties"]["Environment"]["Variables"]
         assert "PREFERRED_GEOGRAPHY" not in env_vars
+
+
+class TestDataBucketProtection:
+    """The data bucket holds the only non-reproducible data; it must survive mistakes.
+
+    Plan: docs/audit-remediation-plan.md item 1.
+    """
+
+    def test_data_bucket_is_versioned_and_retained(self, template):
+        """Exactly one bucket is versioned + retained — the data bucket."""
+        buckets = template.find_resources("AWS::S3::Bucket")
+        protected = [
+            (logical_id, res)
+            for logical_id, res in buckets.items()
+            if res["Properties"].get("VersioningConfiguration", {}).get("Status")
+            == "Enabled"
+        ]
+        assert len(protected) == 1, "exactly one bucket should be versioned"
+        logical_id, resource = protected[0]
+        assert logical_id.startswith("DataBucket")
+        assert resource.get("DeletionPolicy") == "Retain"
+        assert resource.get("UpdateReplacePolicy") == "Retain"
+
+    def test_website_and_logs_buckets_remain_disposable(self, template):
+        """Reproducible buckets keep Delete so `cdk destroy` stays clean for cloners."""
+        buckets = template.find_resources("AWS::S3::Bucket")
+        disposable = [
+            logical_id
+            for logical_id, res in buckets.items()
+            if res.get("DeletionPolicy") == "Delete"
+        ]
+        assert any(l.startswith("WebsiteBucket") for l in disposable)
+        assert any(l.startswith("LogsBucket") for l in disposable)

@@ -51,14 +51,18 @@ class AiRadarAwsStack(Stack):
         config = Config()
 
         # ─── S3 Data Bucket ───────────────────────────────────────────────
-        # Stores announcement CSV and error records
+        # Stores announcement CSV and error records — the only stateful,
+        # non-reproducible data in the system (every row contains paid-for
+        # LLM output). Versioned so a bad overwrite is recoverable, and
+        # RETAINed so `cdk destroy` cannot delete it as a side effect;
+        # deploy.sh --destroy offers explicit, separately-confirmed removal.
         self.data_bucket = s3.Bucket(
             self,
             "DataBucket",
             encryption=s3.BucketEncryption.S3_MANAGED,  # AES-256
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True,
+            versioned=True,
+            removal_policy=RemovalPolicy.RETAIN,
         )
 
         # ─── S3 Website Bucket ────────────────────────────────────────────
