@@ -41,6 +41,46 @@ from constructs import Construct
 
 from src.config import Config
 
+# Shared exclude list for Lambda asset bundling (single source — was duplicated
+# three times, which is how entries drifted). Two hard-learned rules:
+#   1. "cdk.out/**" does NOT match dot-directories like cdk.out/.cache, whose
+#      multi-GB zip caches recursively snowballed past Node's 2 GiB limit and
+#      broke deploys. Exclude the directory itself, not its contents.
+#   2. Never ship local artefacts or secrets: archives, backups, env files,
+#      keys, local context, or CSV data (runtime reads data from S3, never
+#      from the bundle). Plan: docs/audit-remediation-plan.md item 10.
+LAMBDA_ASSET_EXCLUDES = [
+    # VCS / caches / tooling
+    ".git",
+    ".hypothesis",
+    ".kiro",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".venv",
+    "cdk.out",
+    "node_modules",
+    "__pycache__",
+    "*.pyc",
+    ".DS_Store",
+    # Not needed at runtime
+    "tests",
+    "infrastructure",
+    "docs",
+    "scripts",
+    ".vscode",
+    # Local artefacts and secrets — never ship
+    "*.zip",
+    "backups",
+    ".env",
+    ".env.*",
+    "*.pem",
+    "*.key",
+    "*.pptx",
+    "*.csv",
+    "cdk.context.json",
+    "cdk.context.json.example",
+]
+
 
 class AiRadarAwsStack(Stack):
     """CDK Stack for the AI Radar AWS platform."""
@@ -173,24 +213,7 @@ class AiRadarAwsStack(Stack):
             function_name="ai-radar-website-builder",
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="src.website_builder.handler.handler",
-            code=lambda_.Code.from_asset(
-                ".",
-                exclude=[
-                    ".git/*",
-                    ".hypothesis/*",
-                    ".kiro/*",
-                    ".pytest_cache/*",
-                    "tests/*",
-                    "infrastructure/*",
-                    "cdk.out/**",
-                    "node_modules/*",
-                    "__pycache__/*",
-                    "docs/*",
-                    "scripts/*",
-                    "*.pyc",
-                    ".venv/*",
-                ],
-            ),
+            code=lambda_.Code.from_asset(".", exclude=LAMBDA_ASSET_EXCLUDES),
             timeout=Duration.minutes(10),
             memory_size=1024,
             environment={
@@ -346,24 +369,7 @@ class AiRadarAwsStack(Stack):
             function_name="ai-radar-report-pipeline",
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="src.pipeline.handler.handler",
-            code=lambda_.Code.from_asset(
-                ".",
-                exclude=[
-                    ".git/*",
-                    ".hypothesis/*",
-                    ".kiro/*",
-                    ".pytest_cache/*",
-                    "tests/*",
-                    "infrastructure/*",
-                    "cdk.out/**",
-                    "node_modules/*",
-                    "__pycache__/*",
-                    "docs/*",
-                    "scripts/*",
-                    "*.pyc",
-                    ".venv/*",
-                ],
-            ),
+            code=lambda_.Code.from_asset(".", exclude=LAMBDA_ASSET_EXCLUDES),
             timeout=Duration.minutes(15),
             memory_size=1024,
             environment={
@@ -545,24 +551,7 @@ class AiRadarAwsStack(Stack):
             function_name="ai-radar-analytics",
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="src.analytics.handler.handler",
-            code=lambda_.Code.from_asset(
-                ".",
-                exclude=[
-                    ".git/*",
-                    ".hypothesis/*",
-                    ".kiro/*",
-                    ".pytest_cache/*",
-                    "tests/*",
-                    "infrastructure/*",
-                    "cdk.out/**",
-                    "node_modules/*",
-                    "__pycache__/*",
-                    "docs/*",
-                    "scripts/*",
-                    "*.pyc",
-                    ".venv/*",
-                ],
-            ),
+            code=lambda_.Code.from_asset(".", exclude=LAMBDA_ASSET_EXCLUDES),
             timeout=Duration.seconds(10),
             memory_size=128,
             environment={
