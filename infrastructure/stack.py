@@ -31,9 +31,12 @@ from aws_cdk import (
     aws_events_targets as targets,
     aws_iam as iam,
     aws_lambda as lambda_,
+    aws_cloudwatch_actions as cw_actions,
     aws_route53 as route53,
     aws_route53_targets as route53_targets,
     aws_s3 as s3,
+    aws_sns as sns,
+    aws_sns_subscriptions as sns_subscriptions,
     aws_wafv2 as wafv2,
     CfnResource,
 )
@@ -544,6 +547,35 @@ class AiRadarAwsStack(Stack):
             alarm_description="CloudFront receiving unusually high request volume (possible DDoS)",
         )
 
+        # ─── Alerting: SNS topic wired to every alarm ─────────────────────
+        # The topic and alarm wiring are ALWAYS created — a fresh clone gets
+        # alarms genuinely wired to a topic needing one manual subscription.
+        # The email subscription is added only when alert_email is set in the
+        # gitignored cdk.context.json (deploy.sh warns when it is not).
+        # Plan: docs/audit-remediation-plan.md item 2.
+        self.alert_topic = sns.Topic(
+            self,
+            "AlertTopic",
+            topic_name="ai-radar-alerts",
+            display_name="AI Radar AWS Alerts",
+        )
+
+        alert_email = self.node.try_get_context("alert_email")
+        if alert_email:
+            self.alert_topic.add_subscription(
+                sns_subscriptions.EmailSubscription(str(alert_email))
+            )
+
+        for alarm in (
+            self.lambda1_errors_alarm,
+            self.lambda1_timeout_alarm,
+            self.lambda1_duration_alarm,
+            self.lambda2_errors_alarm,
+            self.lambda2_timeout_alarm,
+            self.cloudfront_requests_alarm,
+        ):
+            alarm.add_alarm_action(cw_actions.SnsAction(self.alert_topic))
+
         # ─── Analytics Lambda (Event Collector) ────────────────────────────
         self.analytics_lambda = lambda_.Function(
             self,
@@ -625,7 +657,29 @@ class AiRadarAwsStack(Stack):
         )
 
         # ─── AWS Budget (P2: Cost Anomaly Detection) ──────────────────────
-        # Alert if daily spend exceeds $20 (catches DDoS cost spikes)
+        # Alert if daily spend exceeds $20 (catches DDoS cost spikes).
+        # Without a NotificationsWithSubscribers block, AWS Budgets sends
+        # NOTHING — so the notification is attached whenever alert_email is
+        # configured. Plan: docs/audit-remediation-plan.md item 2.
+        budget_notifications = None
+        if alert_email:
+            budget_notifications = [
+                budgets.CfnBudget.NotificationWithSubscribersProperty(
+                    notification=budgets.CfnBudget.NotificationProperty(
+                        comparison_operator="GREATER_THAN",
+                        notification_type="ACTUAL",
+                        threshold=100,
+                        threshold_type="PERCENTAGE",
+                    ),
+                    subscribers=[
+                        budgets.CfnBudget.SubscriberProperty(
+                            subscription_type="EMAIL",
+                            address=str(alert_email),
+                        )
+                    ],
+                )
+            ]
+
         self.daily_budget = budgets.CfnBudget(
             self,
             "DailySpendBudget",
@@ -638,6 +692,7 @@ class AiRadarAwsStack(Stack):
                     unit="USD",
                 ),
             ),
+            notifications_with_subscribers=budget_notifications,
         )
 
         # ─── Stack Outputs ────────────────────────────────────────────────

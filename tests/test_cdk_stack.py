@@ -485,3 +485,62 @@ class TestDataBucketProtection:
         ]
         assert any(l.startswith("WebsiteBucket") for l in disposable)
         assert any(l.startswith("LogsBucket") for l in disposable)
+
+
+class TestAlarmNotifications:
+    """Every alarm publishes to the alert topic; subscription follows local config.
+
+    Plan: docs/audit-remediation-plan.md item 2.
+    """
+
+    def test_alert_topic_created(self, template):
+        template.resource_count_is("AWS::SNS::Topic", 1)
+        template.has_resource_properties(
+            "AWS::SNS::Topic", {"TopicName": "ai-radar-alerts"}
+        )
+
+    def test_every_alarm_has_an_action(self, template):
+        """No alarm may transition to ALARM silently."""
+        alarms = template.find_resources("AWS::CloudWatch::Alarm")
+        assert len(alarms) == 6
+        for logical_id, resource in alarms.items():
+            actions = resource["Properties"].get("AlarmActions", [])
+            assert len(actions) >= 1, f"{logical_id} has no alarm action"
+
+    def test_no_email_context_means_no_subscription(self, template):
+        """Fresh-clone path: topic wired, nobody subscribed, still synthesizes."""
+        template.resource_count_is("AWS::SNS::Subscription", 0)
+
+    def test_email_context_creates_subscription_and_budget_notification(self):
+        app = cdk.App(context={"alert_email": "ops@example.com"})
+        stack = AiRadarAwsStack(
+            app, "EmailCtxStack", env=cdk.Environment(region=Config().aws_region)
+        )
+        template = assertions.Template.from_stack(stack)
+        template.has_resource_properties(
+            "AWS::SNS::Subscription",
+            {"Protocol": "email", "Endpoint": "ops@example.com"},
+        )
+        template.has_resource_properties(
+            "AWS::Budgets::Budget",
+            {
+                "NotificationsWithSubscribers": [
+                    assertions.Match.object_like(
+                        {
+                            "Subscribers": [
+                                {
+                                    "SubscriptionType": "EMAIL",
+                                    "Address": "ops@example.com",
+                                }
+                            ]
+                        }
+                    )
+                ]
+            },
+        )
+
+    def test_no_email_context_means_budget_has_no_notifications(self, template):
+        budget = list(
+            template.find_resources("AWS::Budgets::Budget").values()
+        )[0]
+        assert "NotificationsWithSubscribers" not in budget["Properties"]

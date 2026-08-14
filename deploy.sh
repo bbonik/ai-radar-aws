@@ -156,6 +156,14 @@ echo -e "${GREEN}║         ✓ Deployment Complete!           ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════╝${NC}"
 echo ""
 
+# Warn if alarms have no subscriber (topic exists, nobody listening)
+if ! grep -q '"alert_email"' cdk.context.json 2>/dev/null; then
+    echo -e "${YELLOW}⚠  No alert_email in cdk.context.json — CloudWatch alarms publish to the${NC}"
+    echo -e "${YELLOW}   'ai-radar-alerts' SNS topic, but nobody is subscribed. Add it and redeploy,${NC}"
+    echo -e "${YELLOW}   or subscribe manually in the SNS console.${NC}"
+    echo ""
+fi
+
 # Show the website URL from stack outputs
 WEBSITE_URL=$(aws cloudformation describe-stacks --stack-name AiRadarAwsStack $PROFILE_ARG --query 'Stacks[0].Outputs[?OutputKey==`WebsiteUrl`].OutputValue' --output text 2>/dev/null)
 if [ -n "$WEBSITE_URL" ]; then
