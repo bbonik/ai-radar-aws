@@ -6,6 +6,7 @@ time to avoid exceeding the timeout.
 """
 
 import re
+import time
 from html.parser import HTMLParser
 from urllib.error import URLError
 from urllib.request import Request, urlopen
@@ -29,6 +30,15 @@ _URL_RE = re.compile(r'https?://[^\s<>"\')\]]+')
 
 # Default safety margin in milliseconds (30 seconds)
 _SAFETY_MARGIN_MS = 30_000
+
+# Reservation required in the gate before starting research on one item, in
+# milliseconds. Deliberately much smaller than the per-item budget ceiling:
+# the old gate reserved the full theoretical maximum (research_timeout ×
+# 1000 + margin = 330 s), which silently disabled research for every item
+# after ~minute 10 of a 15-minute Lambda even though a typical item takes
+# seconds. The budget is enforced by an in-loop deadline instead.
+# Plan: docs/audit-remediation-plan.md item 8, decision D7.
+_GATE_RESERVATION_MS = 90_000
 
 # Per-URL fetch timeout in seconds
 _URL_FETCH_TIMEOUT = 15
@@ -116,7 +126,21 @@ class ResearchAgent:
         gathered_content: list[PageContent] = []
         error_links: list[str] = []
 
+        # Per-item budget: stop fetching further URLs once the budget is
+        # spent (Requirement 4.4 — "up to 5 minutes" is a ceiling, not a
+        # reservation) or once remaining Lambda time approaches the safety
+        # margin. Content gathered before the deadline is kept.
+        deadline = time.monotonic() + self._config.research_timeout_per_announcement
+
         for url in urls:
+            if time.monotonic() >= deadline or not self._within_lambda_margin():
+                self._logger.warning(
+                    "Research budget exhausted, returning partial content",
+                    announcement_link=item.link,
+                    urls_completed=len(gathered_content) + len(error_links),
+                    urls_remaining=len(urls) - len(gathered_content) - len(error_links),
+                )
+                break
             try:
                 page_content = self._fetch_and_extract(url)
                 if page_content.text:
@@ -146,13 +170,19 @@ class ResearchAgent:
         )
 
     def _has_sufficient_time(self) -> bool:
-        """Check if there is enough remaining Lambda time for research.
+        """Check if there is enough remaining Lambda time to START research.
 
-        Returns True if remaining time >= (research_timeout × 1000 + safety_margin).
+        Requires a fixed 90 s reservation rather than the full theoretical
+        per-item maximum. The per-item budget itself is enforced by the
+        deadline inside research(); this gate only ensures a meaningful
+        amount of work can happen before the Lambda margin is reached.
         """
         remaining_ms = self._context.get_remaining_time_in_millis()
-        required_ms = (self._config.research_timeout_per_announcement * 1000) + _SAFETY_MARGIN_MS
-        return remaining_ms >= required_ms
+        return remaining_ms >= _GATE_RESERVATION_MS + _SAFETY_MARGIN_MS
+
+    def _within_lambda_margin(self) -> bool:
+        """True while remaining Lambda time exceeds the safety margin."""
+        return self._context.get_remaining_time_in_millis() > _SAFETY_MARGIN_MS
 
     def _extract_urls(self, item: RSSItem) -> list[str]:
         """Extract unique URLs from the announcement's link and description.
