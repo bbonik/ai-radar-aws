@@ -14,6 +14,7 @@ from moto import mock_aws
 
 from src.config import Config
 from src.pipeline.storage_manager import (
+    CsvSchemaMismatchError,
     ANNOUNCEMENT_CSV_COLUMNS,
     ANNOUNCEMENTS_KEY,
     ERROR_CSV_COLUMNS,
@@ -685,3 +686,68 @@ class TestDamagedIndexSelfHeal:
 
         links = manager.load_existing_links()
         assert links == {"https://a.example", "https://b.example"}
+
+
+# --- Item 5: CSV schema drift fails loudly (docs/audit-remediation-plan.md) ---
+
+
+class TestCsvSchemaMismatch:
+    """Schema drift must raise an actionable error, never a bare ValueError
+    (extra fields) or a silent empty cell (missing fields)."""
+
+    @pytest.fixture
+    def manager(self, config, s3_client, logger):
+        return StorageManager(config, s3_client, logger, TEST_BUCKET)
+
+    def _csv_with_columns(self, columns: list[str]) -> str:
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=columns)
+        writer.writeheader()
+        writer.writerow({c: "value" for c in columns})
+        return output.getvalue()
+
+    def test_row_with_extra_field_raises_named_error(self, manager):
+        """New model field, old stored header → error names the new column."""
+        existing = self._csv_with_columns(["title", "link"])
+        row = {"title": "t", "link": "l", "brand_new_field": "x"}
+
+        with pytest.raises(CsvSchemaMismatchError) as exc_info:
+            manager._append_row_to_csv(existing, row, ["title", "link", "brand_new_field"])
+
+        message = str(exc_info.value)
+        assert "brand_new_field" in message
+        assert "migration" in message
+
+    def test_header_with_extra_column_raises_named_error(self, manager):
+        """Migrated header, old code's row → previously a silent empty cell."""
+        existing = self._csv_with_columns(["title", "link", "migrated_column"])
+        row = {"title": "t", "link": "l"}
+
+        with pytest.raises(CsvSchemaMismatchError) as exc_info:
+            manager._append_row_to_csv(existing, row, ["title", "link"])
+
+        assert "migrated_column" in str(exc_info.value)
+
+    def test_matching_schema_appends_normally(self, manager):
+        existing = self._csv_with_columns(["title", "link"])
+        row = {"title": "t2", "link": "l2"}
+
+        result = manager._append_row_to_csv(existing, row, ["title", "link"])
+
+        rows = list(csv.DictReader(io.StringIO(result)))
+        assert len(rows) == 2
+        assert rows[1] == row
+
+    def test_new_file_uses_canonical_columns(self, manager, sample_announcement):
+        result = manager._append_row_to_csv(
+            "", sample_announcement.to_csv_row(), ANNOUNCEMENT_CSV_COLUMNS
+        )
+        header = result.split("\n", 1)[0]
+        assert header.split(",")[0] == "title"
+
+    def test_current_model_matches_live_schema(self, manager, sample_announcement):
+        """Guard: ProcessedAnnouncement.to_csv_row() must line up with the
+        canonical column list, or every production append would now raise."""
+        assert set(sample_announcement.to_csv_row().keys()) == set(
+            ANNOUNCEMENT_CSV_COLUMNS
+        )

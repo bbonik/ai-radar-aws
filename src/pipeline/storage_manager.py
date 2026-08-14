@@ -60,6 +60,20 @@ ERRORS_KEY = "errors/failed_announcements.csv"
 MAX_RETRIES = 3
 
 
+class CsvSchemaMismatchError(Exception):
+    """Raised when a row's fields do not match the stored CSV's header.
+
+    Schema evolution is deliberately NOT automatic (a past auto-migration
+    corrupted the CSV via quote doubling — commit 722eb25). When a model
+    field is added, the stored file must be migrated explicitly with a
+    one-time script before appends can resume. This error names exactly
+    which columns diverge so the failure is actionable instead of a bare
+    ValueError filed under stage 'unknown'.
+    """
+
+    pass
+
+
 class StorageManager:
     """Manages persistence of announcement data and error records to S3.
 
@@ -442,6 +456,24 @@ class StorageManager:
             # Use csv.reader to properly parse the header (handles quotes)
             header_reader = csv.reader(io.StringIO(first_line))
             existing_columns = next(header_reader)
+
+            # Detect schema drift BEFORE writing. DictWriter would raise a
+            # bare ValueError for extra fields and silently write "" for
+            # missing ones — both wrong. Fail with an actionable message.
+            row_fields = set(row.keys())
+            header_fields = set(existing_columns)
+            if row_fields != header_fields:
+                extra = sorted(row_fields - header_fields)
+                missing = sorted(header_fields - row_fields)
+                raise CsvSchemaMismatchError(
+                    f"Row fields do not match the stored CSV header. "
+                    f"Fields not in header: {extra or 'none'}; "
+                    f"header columns absent from row: {missing or 'none'}. "
+                    f"The stored file must be migrated explicitly before "
+                    f"appends can resume — write a one-time migration script "
+                    f"(pattern: scripts/drop_aws_service_column.py) and run "
+                    f"it against s3://{self._data_bucket}/{ANNOUNCEMENTS_KEY}."
+                )
 
             # Append the new row using existing columns
             writer = csv.DictWriter(output, fieldnames=existing_columns)
