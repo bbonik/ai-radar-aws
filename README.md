@@ -32,8 +32,8 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the [AWS "What's New" 
 - **Fully automated** — runs daily, no manual curation needed
 - **LLM-powered analysis** — Claude Sonnet, Opus, and Haiku for reports, diagrams, and tagging
 - **Research-backed** — follows blog post links and reads documentation for deeper context
-- **5-star importance scoring** — point-based system with geographic preference
-- **Geographic relevance** — badges show whether announcements are available in your region
+- **5-star importance scoring** — point-based system with an optional geographic preference
+- **Geographic relevance** — opt-in badges show whether announcements are available in your region
 - **One-command deploy** — `./deploy.sh` sets up the entire stack from scratch
 
 ## 🏗️ Architecture
@@ -104,22 +104,31 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the [AWS "What's New" 
 │   ├── app.py                     # CDK app entry point
 │   └── stack.py                   # Full stack definition
 ├── scripts/                         # Utility scripts
+│   ├── _common.py                 # Shared helpers (region from Config, bucket lookup, context loading)
 │   ├── analytics_report.py        # Generate analytics CSV report via Athena
+│   ├── backup.py                  # Backup data (and optionally site) to a local zip
 │   ├── pipeline_health.py         # Pipeline health report (daily run status)
 │   ├── retag_announcements.py     # Retroactively tag existing announcements
 │   ├── reclassify_announcements.py # Recompute importance scores
 │   ├── compute_geo_relevance.py   # Backfill geographic relevance badges
 │   ├── generate_card_summaries.py # Backfill card summaries for existing data
 │   ├── generate_missing_graphs.py # Backfill visual summaries for 2+ star items
+│   ├── regenerate_all_graphs.py   # Clear + regenerate all visual summaries
 │   └── test_local.py             # Local pipeline testing with mocked AWS
-├── tests/                           # Tests (pytest + hypothesis)
+├── tests/                           # Tests (pytest + hypothesis property-based)
+│   └── fixtures/                  # Live-data snapshots for regression tests
 ├── docs/                            # Design documents and analysis
 │   ├── taxonomy-analysis.md       # Multi-dimensional tagging taxonomy design
-│   └── mermaid-style-guide.md    # Visual summary standardization rules
-├── deploy.sh                        # One-command full deployment
+│   ├── mermaid-style-guide.md     # Visual summary standardization rules
+│   └── audit-remediation-plan.md  # 2026-08 hardening audit: decisions + evidence
+├── .github/workflows/ci.yml        # CI: tests + zero-config synth + secret hygiene
+├── setup.sh                         # One-time environment setup
+├── deploy.sh                        # One-command full deployment (and --destroy)
 ├── rebuild-site.sh                  # Quick redeploy + website rebuild
+├── run-pipeline.sh                  # Trigger the pipeline with live progress
 ├── CHANGELOG.md                     # Issue tracking and feature log
-├── cdk.json                         # CDK configuration
+├── cdk.json                         # CDK configuration (generic — no personal values)
+├── cdk.context.json.example         # Template for your deployment's values (copy to gitignored cdk.context.json)
 ├── requirements.txt                 # Lambda runtime dependencies
 └── requirements-dev.txt             # Development dependencies
 ```
@@ -139,10 +148,19 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the [AWS "What's New" 
 git clone https://github.com/bbonik/ai-radar-aws.git
 cd ai-radar-aws
 ./setup.sh    # One-time: checks prerequisites, creates venv, installs everything
+
+# Optional — personalize your deployment (domain, alert email, geography).
+# Skipping this is fine: the stack deploys to a fully working default state.
+cp cdk.context.json.example cdk.context.json && $EDITOR cdk.context.json
+
 ./deploy.sh   # Deploys the full stack to AWS
 ```
 
-That's it. Two commands from zero to a running website.
+That's it. Two commands from zero to a running website (three if you personalize).
+
+**After the first deploy:**
+- If you set `alert_email`, check your inbox for an **"AWS Notification - Subscription Confirmation"** email and click the link — CloudWatch alarms notify nobody until you do. Without `alert_email`, the deploy prints a warning and you can subscribe to the `ai-radar-alerts` SNS topic manually later.
+- Trigger the first pipeline run with `./run-pipeline.sh`, or wait for the daily schedule (22:00 UTC).
 
 ## 📋 Scripts Reference
 
@@ -150,7 +168,7 @@ That's it. Two commands from zero to a running website.
 |--------|---------|-------------|
 | `./setup.sh` | Check prerequisites, create venv, install deps | First time after cloning |
 | `./deploy.sh` | Full deployment (tests + CDK + deploy) | First deploy or major infra changes |
-| `./deploy.sh --destroy` | Tear down the entire stack | Remove all resources |
+| `./deploy.sh --destroy` | Tear down the stack — the **data bucket is retained** (it holds all generated reports); deleting it is a separate, explicit confirmation | Remove the deployment |
 | `./rebuild-site.sh` | Deploy code + rebuild website | After code changes |
 | `./rebuild-site.sh --skip-cdk` | Just rebuild website (no CDK) | After data-only changes |
 | `./run-pipeline.sh` | Trigger pipeline with live progress | See real-time processing status |
@@ -185,6 +203,8 @@ This invokes the pipeline synchronously and shows:
 
 The website is automatically rebuilt when the pipeline finishes. Hard-refresh (Cmd+Shift+R) after ~1-2 minutes to see new announcements.
 
+> **Note**: pipeline runs are serialised (concurrency capped at 1) because the pipeline does read-modify-write on the data store. If a manual run overlaps the scheduled one, the second invocation reports "a pipeline run is already in progress" — wait and retry.
+
 ## ⚙️ How It Works
 
 1. **EventBridge** triggers Lambda 1 daily at 22:00 UTC
@@ -209,7 +229,7 @@ The website is automatically rebuilt when the pipeline finishes. Hard-refresh (C
 - **Taxonomy tags** — 5 dimensions: Services, Type, Concepts, Use Cases, Providers
 - **Geographic relevance badges** — shows whether announcements are available in your preferred geography (configurable: APJ, EMEA, Americas, or Global)
 - **Report pages** — 6 structured sections with bullet points + Mermaid visual summaries
-- **PDF export** — Client-side PDF generation via html2pdf.js
+- **PDF export** — browser-native print-to-PDF with a dedicated print stylesheet (no external library)
 - **Timeline chart** — Stacked bar chart showing announcement volume over time (auto-aggregates to weekly when >90 days)
 - **About modal** — Project methodology explanation
 - **Analytics** — Client-side event tracking (pageviews, clicks, filter usage)
@@ -220,11 +240,36 @@ The site tracks usage via two mechanisms:
 - **CloudFront access logs** → S3 (page views, unique IPs, geographic data)
 - **Custom event tracking** → API Gateway → Lambda → S3 JSONL (clicks, filters, PDF exports)
 
+Privacy and abuse controls on the custom-event path:
+- Client IPs are **truncated at ingest** (IPv4 to /24, IPv6 to /48) — no per-device identifier is stored; "unique visitor" counts are distinct network prefixes, not distinct devices
+- Raw logs and events expire after **90 days** via S3 lifecycle rules
+- The endpoint is rate-limited (5 req/s, burst 20) and validates events against an allowlist with a 1 KB body cap
+
 Generate a report:
 ```bash
 python scripts/analytics_report.py --days 30 --output report.csv  # Save to file
 python scripts/analytics_report.py --days 30                       # Print to stdout (no file created)
 ```
+
+## 🔔 Monitoring & Alerts
+
+The stack provisions six CloudWatch alarms (pipeline errors/timeout/duration, website-builder errors/timeout, CloudFront request spikes) plus a **$20/day cost budget**. All of them publish to the **`ai-radar-alerts`** SNS topic.
+
+- Set `alert_email` in `cdk.context.json` before deploying and confirm the subscription email, and every alarm plus the budget alert reaches your inbox
+- Check pipeline health from the CLI: `python scripts/pipeline_health.py`
+- All logs are structured JSON with a per-run correlation ID (`run_id`) — filter CloudWatch Logs by `run_id` to trace one run end to end across both Lambdas
+
+## 🛡️ Data Safety
+
+The data bucket (announcement database + all generated reports — the only non-reproducible data in the system) is protected in depth:
+
+- **S3 versioning** — every write creates a recovery point; a bad overwrite can be rolled back
+- **Retention policy** — `cdk destroy` cannot delete the bucket; `./deploy.sh --destroy` retains it and offers deletion only behind a second, explicit confirmation
+- **Write ordering** — the dedup index is written before the data row, so a mid-write crash can never duplicate an announcement on the site
+- **Serialised runs** — pipeline concurrency is capped at 1, eliminating concurrent-write races
+- **Local backups** — `python scripts/backup.py --output ~/backups` for an offline copy
+
+The website and logs buckets are deliberately disposable — the site rebuilds from the data CSV at any time.
 
 ## 🔧 Configuration
 
@@ -232,11 +277,10 @@ All tunable parameters live in `src/config.py`:
 - AWS region and schedule (daily at 22:00 UTC)
 - LLM model IDs: Sonnet 4.6 (reports), Opus 4.6 (graphs), Haiku 4.5 (tagging)
 - Importance scoring weights and thresholds
-- Geographic preference (`preferred_geography`: apj, emea, americas, or global)
 - Prompt templates (report, graph, tagger)
 - Timeouts and retry settings
 
-No secrets in the repository — all credentials come from IAM roles at runtime.
+These are **generic project defaults**, identical for every deployment. Anything specific to *your* deployment (domain, alert email, geography preference) belongs in the gitignored `cdk.context.json` — see below. No secrets in the repository — all credentials come from IAM roles at runtime.
 
 ### Configuring Your Own Deployment
 
@@ -251,7 +295,8 @@ cp cdk.context.json.example cdk.context.json
 | `custom_domain` | Serve the site on your own domain | Default CloudFront URL is used |
 | `certificate_arn` | ACM certificate for the custom domain | Required only with `custom_domain` |
 | `hosted_zone_id` | Route 53 zone for the domain's alias record | No DNS record created |
-| `preferred_geography` | Geographic scoring bias: `apj`, `emea`, `americas`, or `global` | Default from `src/config.py` (no per-deployment bias) |
+| `alert_email` | Subscribes this address to the `ai-radar-alerts` SNS topic (CloudWatch alarms + the $20/day budget alert) | Alarms publish to the topic but nobody is subscribed; the deploy prints a warning |
+| `preferred_geography` | Geographic scoring bias and badges: `apj`, `emea`, or `americas` | `global` — no bias, no badges |
 
 Every key is optional: a fresh clone with no `cdk.context.json` deploys to a fully working default state. The CDK stack injects runtime values (currently `preferred_geography`) into the Lambdas as environment variables, and the utility scripts read the same file, so laptop and Lambda always resolve identical configuration.
 
@@ -282,11 +327,19 @@ The dominant cost is **Bedrock Opus** (visual summaries) and **WAF** ($5/month f
 
 > **Note**: Bedrock pricing varies by model and region. The estimates above use approximate on-demand pricing for the global inference profiles. Actual costs may differ based on token counts and regional pricing.
 
+## 🔒 Security
+
+- S3 buckets are fully private; the site is served only through CloudFront with Origin Access Control, WAF (rate limiting + AWS managed common rules), TLS 1.2+, and security headers
+- The Content-Security-Policy pins `connect-src` to this deployment's own API endpoint; CDN scripts (Mermaid, Chart.js) are version-pinned with Subresource Integrity hashes
+- All rendered content is HTML-escaped before templating; Mermaid runs with `securityLevel: 'strict'`
+- Outbound research fetches are bounded: https-only, 2 MB per response, 8 URLs per announcement
+- Client IPs are de-identified at ingest (see Analytics)
+
 ## 🛠️ Development
 
 ```bash
-# Run all tests
-pytest tests/ -v
+# Run all tests (pytest + hypothesis property-based tests)
+pytest tests/ -q
 
 # Run specific test
 pytest tests/test_cdk_stack.py -v
@@ -294,6 +347,8 @@ pytest tests/test_cdk_stack.py -v
 # Format code
 black src/ tests/
 ```
+
+CI (GitHub Actions) runs on every push and pull request: the full test suite, a **zero-config synth check** (the stack must deploy for a fresh clone with no `cdk.context.json`), and a secret-hygiene scan. If your PR adds configuration, make sure absent values degrade to a working default — the synth check enforces this.
 
 ## 📄 License
 
