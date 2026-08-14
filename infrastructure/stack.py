@@ -622,6 +622,11 @@ class AiRadarAwsStack(Stack):
             memory_size=128,
             environment={
                 "LOGS_BUCKET_NAME": self.logs_bucket.bucket_name,
+                # Echoed as Access-Control-Allow-Origin (item 12); "*" when
+                # no custom domain is configured.
+                "ALLOWED_ORIGIN": (
+                    f"https://{custom_domain}" if custom_domain else "*"
+                ),
             },
         )
 
@@ -652,9 +657,14 @@ class AiRadarAwsStack(Stack):
             api_id=self.analytics_api.ref,
             stage_name="$default",
             auto_deploy=True,
+            # Throttling is the primary abuse control on this endpoint (WAF
+            # deferred — docs/audit-remediation-plan.md item 12, D5). 5 rps
+            # sustained is far above legitimate traffic for this site; the
+            # budget alarm (item 2) is the cost backstop and the 90-day
+            # lifecycle bounds storage.
             default_route_settings=apigwv2.CfnStage.RouteSettingsProperty(
-                throttling_burst_limit=100,
-                throttling_rate_limit=50,
+                throttling_burst_limit=20,
+                throttling_rate_limit=5,
             ),
         )
 

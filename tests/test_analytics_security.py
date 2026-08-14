@@ -84,3 +84,63 @@ def test_field_length_truncation():
     result = handler(event, None)
     # Should fail on empty bucket, not crash on long fields
     assert result["statusCode"] == 500
+
+
+# --- Item 12: de-identification and origin echo (docs/audit-remediation-plan.md) ---
+
+from src.analytics.handler import truncate_ip
+
+
+class TestIpTruncation:
+    """Client IPs are de-identified at ingest (D6): IPv4 /24, IPv6 /48."""
+
+    def test_ipv4_drops_host_octet(self):
+        assert truncate_ip("203.0.113.77") == "203.0.113.0/24"
+
+    def test_ipv6_keeps_first_three_hextets(self):
+        assert truncate_ip("2001:db8:85a3:8d3:1319:8a2e:370:7348") == "2001:db8:85a3::/48"
+
+    def test_unknown_and_garbage_never_stored_raw(self):
+        assert truncate_ip("unknown") == "unknown"
+        assert truncate_ip("") == "unknown"
+        assert truncate_ip("not-an-ip") == "unknown"
+        assert truncate_ip("1.2.3") == "unknown"
+
+    def test_stored_event_contains_truncated_ip_only(self, monkeypatch):
+        """End to end: the JSONL written to S3 must not hold the full IP."""
+        import src.analytics.handler as h
+
+        written = {}
+
+        class FakeS3:
+            def put_object(self, **kwargs):
+                written.update(kwargs)
+
+        monkeypatch.setenv("LOGS_BUCKET_NAME", "test-bucket")
+        monkeypatch.setattr(h.boto3, "client", lambda *_a, **_k: FakeS3())
+
+        event = _make_event({"event_type": "pageview", "path": "/index.html"})
+        result = handler(event, None)
+
+        assert result["statusCode"] == 200
+        record = json.loads(written["Body"].decode())
+        assert record["source_ip"] == "1.2.3.0/24"
+        assert "1.2.3.4" not in written["Body"].decode()
+
+
+class TestCorsOriginEcho:
+    """ACAO honours ALLOWED_ORIGIN instead of hardcoding '*' (item 12)."""
+
+    def test_configured_origin_is_echoed(self, monkeypatch):
+        monkeypatch.setenv("ALLOWED_ORIGIN", "https://news.example.com")
+        monkeypatch.setenv("LOGS_BUCKET_NAME", "")
+        event = _make_event({"event_type": "invalid_type"})
+        result = handler(event, None)
+        assert result["headers"]["Access-Control-Allow-Origin"] == "https://news.example.com"
+
+    def test_absent_config_falls_back_to_wildcard(self, monkeypatch):
+        monkeypatch.delenv("ALLOWED_ORIGIN", raising=False)
+        monkeypatch.setenv("LOGS_BUCKET_NAME", "")
+        event = _make_event({"event_type": "invalid_type"})
+        result = handler(event, None)
+        assert result["headers"]["Access-Control-Allow-Origin"] == "*"
