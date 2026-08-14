@@ -11,23 +11,28 @@ Usage:
 import argparse
 import csv
 import io
+import os
 import sys
 import time
 from datetime import datetime, timedelta, timezone
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import boto3
+
+from scripts._common import STACK_NAME, deployed_region
 
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
 ATHENA_DATABASE = "ai_radar_analytics"
 ATHENA_WORKGROUP = "primary"
-STACK_NAME = "AiRadarAwsStack"
+REGION = deployed_region()
 
 
 def get_stack_outputs():
     """Retrieve bucket names from CloudFormation stack outputs."""
-    cfn = boto3.client("cloudformation")
+    cfn = boto3.client("cloudformation", region_name=REGION)
     try:
         response = cfn.describe_stacks(StackName=STACK_NAME)
     except cfn.exceptions.ClientError as e:
@@ -48,7 +53,7 @@ def get_bucket_names(outputs):
 
     # If not in outputs, look up via stack resources
     if not logs_bucket:
-        cfn = boto3.client("cloudformation")
+        cfn = boto3.client("cloudformation", region_name=REGION)
         resources = cfn.list_stack_resources(StackName=STACK_NAME)
         for r in resources.get("StackResourceSummaries", []):
             if r["LogicalResourceId"] == "LogsBucket":
@@ -352,7 +357,7 @@ def main():
     output_location = f"s3://{logs_bucket}/athena-results/"
 
     # Setup
-    athena = boto3.client("athena")
+    athena = boto3.client("athena", region_name=REGION)
     setup_database(athena, output_location, logs_bucket)
 
     # Run queries

@@ -20,7 +20,8 @@ NC='\033[0m'
 
 FUNCTION_NAME="ai-radar-report-pipeline"
 LOG_GROUP="/aws/lambda/${FUNCTION_NAME}"
-REGION="us-east-1"
+# Region from the single source of truth (same pattern as deploy.sh)
+REGION=$(python3 -c "from src.config import Config; print(Config().aws_region)")
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}  AI Radar AWS — Pipeline Runner${NC}"

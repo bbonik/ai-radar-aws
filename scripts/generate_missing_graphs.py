@@ -19,6 +19,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import boto3
 
+from scripts._common import find_stack_bucket, load_context_env
+
+load_context_env()
+
 from src.config import Config
 from src.shared.logger import StructuredLogger
 from src.shared.models import Report, RSSItem
@@ -26,22 +30,8 @@ from src.pipeline.graph_generator import GraphGenerator
 
 
 def get_data_bucket() -> str:
-    bucket = os.environ.get("DATA_BUCKET_NAME")
-    if bucket:
-        return bucket
-    cf = boto3.client("cloudformation", region_name="us-east-1")
-    try:
-        resources = cf.list_stack_resources(StackName="AiRadarAwsStack")
-        for r in resources["StackResourceSummaries"]:
-            if r["ResourceType"] == "AWS::S3::Bucket" and "databucket" in r["PhysicalResourceId"].lower():
-                return r["PhysicalResourceId"]
-    except Exception:
-        pass
-    s3 = boto3.client("s3")
-    for b in s3.list_buckets()["Buckets"]:
-        if "airadarawsstack" in b["Name"] and "data" in b["Name"]:
-            return b["Name"]
-    raise RuntimeError("Set DATA_BUCKET_NAME env var.")
+    """Resolve the data bucket via the shared helper (region from Config)."""
+    return find_stack_bucket("DataBucket")
 
 
 def main():
