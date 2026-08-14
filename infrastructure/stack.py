@@ -375,6 +375,12 @@ class AiRadarAwsStack(Stack):
             code=lambda_.Code.from_asset(".", exclude=LAMBDA_ASSET_EXCLUDES),
             timeout=Duration.minutes(15),
             memory_size=1024,
+            # Exactly one run at a time: the pipeline does read-modify-write
+            # on the CSV, so a manual run overlapping the scheduled one would
+            # silently lose the other's writes (last writer wins). A second
+            # invocation now fails fast with a throttle instead.
+            # Plan: docs/audit-remediation-plan.md item 4.
+            reserved_concurrent_executions=1,
             environment={
                 "DATA_BUCKET_NAME": self.data_bucket.bucket_name,
                 "WEBSITE_BUILDER_FUNCTION_NAME": self.website_builder_lambda.function_name,

@@ -544,3 +544,29 @@ class TestAlarmNotifications:
             template.find_resources("AWS::Budgets::Budget").values()
         )[0]
         assert "NotificationsWithSubscribers" not in budget["Properties"]
+
+
+class TestPipelineConcurrency:
+    """The pipeline does read-modify-write on the CSV; runs must serialise.
+
+    Plan: docs/audit-remediation-plan.md item 4.
+    """
+
+    def test_pipeline_lambda_reserved_concurrency_is_one(self, template):
+        template.has_resource_properties(
+            "AWS::Lambda::Function",
+            {
+                "FunctionName": "ai-radar-report-pipeline",
+                "ReservedConcurrentExecutions": 1,
+            },
+        )
+
+    def test_website_builder_has_no_concurrency_cap(self, template):
+        """The builder is idempotent from CSV — concurrent builds waste effort
+        but cannot corrupt state, so no cap."""
+        builder = [
+            res
+            for res in template.find_resources("AWS::Lambda::Function").values()
+            if res["Properties"].get("FunctionName") == "ai-radar-website-builder"
+        ][0]
+        assert "ReservedConcurrentExecutions" not in builder["Properties"]

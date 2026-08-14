@@ -36,12 +36,24 @@ echo ""
 
 # Invoke synchronously — blocks until Lambda completes
 RESPONSE_FILE=$(mktemp)
-aws lambda invoke \
+INVOKE_ERR=$(mktemp)
+if ! aws lambda invoke \
     --function-name "$FUNCTION_NAME" \
     --invocation-type RequestResponse \
     --region "$REGION" \
     --cli-read-timeout 900 \
-    "$RESPONSE_FILE" > /dev/null 2>&1
+    "$RESPONSE_FILE" > /dev/null 2>"$INVOKE_ERR"; then
+    if grep -qi "TooManyRequests\|Rate exceeded\|429" "$INVOKE_ERR"; then
+        echo -e "${YELLOW}⚠  A pipeline run is already in progress (concurrency is capped at 1 to"
+        echo -e "   protect the data store from concurrent writes). Wait and retry.${NC}"
+    else
+        echo -e "${RED}✗ Lambda invocation failed:${NC}"
+        cat "$INVOKE_ERR"
+    fi
+    rm -f "$RESPONSE_FILE" "$INVOKE_ERR"
+    exit 1
+fi
+rm -f "$INVOKE_ERR"
 
 # Parse the Lambda response
 RESPONSE=$(cat "$RESPONSE_FILE")
