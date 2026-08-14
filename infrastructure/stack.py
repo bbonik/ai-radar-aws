@@ -276,8 +276,36 @@ class AiRadarAwsStack(Stack):
             ],
         )
 
+        # ─── Analytics HTTP API (created early: its URL is pinned in CSP) ─
+        # The API resource itself is declared here so the response headers
+        # policy below can reference its exact hostname. Its CORS config,
+        # integration, route and stage are attached later in the analytics
+        # section (CORS references the distribution domain, which references
+        # this policy — declaring CORS here would be a dependency cycle).
+        self.analytics_api = apigwv2.CfnApi(
+            self,
+            "AnalyticsApi",
+            name="ai-radar-analytics-api",
+            protocol_type="HTTP",
+        )
+        analytics_api_host = (
+            f"{self.analytics_api.ref}.execute-api.{Aws.REGION}.amazonaws.com"
+        )
+
         # ─── CloudFront Response Headers Policy ───────────────────────────
         # Security headers: CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy
+        #
+        # CSP notes (docs/audit-remediation-plan.md item 11):
+        # - connect-src pins THIS deployment's API Gateway hostname; the old
+        #   wildcard *.execute-api.us-east-1.amazonaws.com authorised any AWS
+        #   customer's API as an exfiltration destination.
+        # - 'unsafe-inline'/'unsafe-eval' are required by the current setup:
+        #   Mermaid and Chart.js are initialised via inline <script> blocks
+        #   and Mermaid evaluates dynamically. Removing them would need the
+        #   inline init extracted to a served .js file plus hash/nonce-based
+        #   policy — deliberate, revisit if the page gains any user input.
+        # - cdnjs.cloudflare.com was removed: it served html2pdf.js, which
+        #   commit aeb6682 replaced with browser-native print.
         self.response_headers_policy = cloudfront.ResponseHeadersPolicy(
             self,
             "SecurityHeadersPolicy",
@@ -286,10 +314,10 @@ class AiRadarAwsStack(Stack):
                 content_security_policy=cloudfront.ResponseHeadersContentSecurityPolicy(
                     content_security_policy=(
                         "default-src 'self'; "
-                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
                         "style-src 'self' 'unsafe-inline'; "
                         "img-src 'self' data:; "
-                        "connect-src 'self' https://*.execute-api.us-east-1.amazonaws.com"
+                        f"connect-src 'self' https://{analytics_api_host}"
                     ),
                     override=True,
                 ),
@@ -601,17 +629,20 @@ class AiRadarAwsStack(Stack):
         self.logs_bucket.grant_write(self.analytics_lambda)
 
         # ─── HTTP API Gateway (Analytics Events) ──────────────────────────
-        self.analytics_api = apigwv2.CfnApi(
-            self,
-            "AnalyticsApi",
-            name="ai-radar-analytics-api",
-            protocol_type="HTTP",
-            cors_configuration=apigwv2.CfnApi.CorsProperty(
-                allow_origins=[f"https://{self.distribution.distribution_domain_name}"]
-                + ([f"https://{custom_domain}"] if custom_domain else []),
-                allow_methods=["POST", "OPTIONS"],
-                allow_headers=["Content-Type"],
+        # The CfnApi resource is declared earlier (its hostname is pinned in
+        # the CSP connect-src). CORS must NOT reference the distribution's
+        # domain: policy→API→distribution→policy is a CloudFormation cycle.
+        # With a custom domain configured, that static value is the allowed
+        # origin (the canonical site URL). Without one, fall back to "*" —
+        # CORS is browser-side courtesy on an endpoint that is publicly
+        # writable by design; the real limits are stage throttling (item 12)
+        # and the handler's validation.
+        self.analytics_api.cors_configuration = apigwv2.CfnApi.CorsProperty(
+            allow_origins=(
+                [f"https://{custom_domain}"] if custom_domain else ["*"]
             ),
+            allow_methods=["POST", "OPTIONS"],
+            allow_headers=["Content-Type"],
         )
 
         # Auto-deploy stage with throttling (P1: rate limiting)

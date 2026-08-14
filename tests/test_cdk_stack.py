@@ -570,3 +570,35 @@ class TestPipelineConcurrency:
             if res["Properties"].get("FunctionName") == "ai-radar-website-builder"
         ][0]
         assert "ReservedConcurrentExecutions" not in builder["Properties"]
+
+
+class TestContentSecurityPolicy:
+    """CSP pins the deployment's own API; no stale or wildcard grants.
+
+    Plan: docs/audit-remediation-plan.md item 11.
+    """
+
+    def _csp(self, template) -> str:
+        policy = list(
+            template.find_resources("AWS::CloudFront::ResponseHeadersPolicy").values()
+        )[0]
+        csp = policy["Properties"]["ResponseHeadersPolicyConfig"][
+            "SecurityHeadersConfig"
+        ]["ContentSecurityPolicy"]["ContentSecurityPolicy"]
+        # The value is an Fn::Join over the API ref; flatten for assertions
+        if isinstance(csp, dict):
+            parts = csp.get("Fn::Join", [None, []])[1]
+            csp = "".join(p if isinstance(p, str) else "<REF>" for p in parts)
+        return csp
+
+    def test_connect_src_pins_own_api_not_wildcard(self, template):
+        csp = self._csp(template)
+        assert "*.execute-api" not in csp, "wildcard authorises any AWS customer's API"
+        assert "<REF>.execute-api." in csp, "must reference this stack's own API id"
+
+    def test_stale_cdnjs_grant_removed(self, template):
+        """cdnjs served html2pdf.js, replaced by native print in aeb6682."""
+        assert "cdnjs.cloudflare.com" not in self._csp(template)
+
+    def test_jsdelivr_retained_for_mermaid_and_chartjs(self, template):
+        assert "https://cdn.jsdelivr.net" in self._csp(template)

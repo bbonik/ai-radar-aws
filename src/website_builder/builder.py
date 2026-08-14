@@ -2847,7 +2847,10 @@ REPORT_TEMPLATE = """\
 
   <script src="../assets/app.js"></script>
   <script>
-    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+    // securityLevel 'strict' sanitises label HTML. It is Mermaid 10's
+    // default, but the diagrams are LLM-generated, so the protection is
+    // pinned explicitly rather than relying on an upstream default.
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral', securityLevel: 'strict' });
   </script>
 </body>
 </html>
