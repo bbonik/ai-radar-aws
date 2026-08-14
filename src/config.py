@@ -86,9 +86,15 @@ class Config:
     # Instance/notebook announcement penalty
     instance_announcement_penalty: float = -2.0  # Demotes instance type/notebook announcements
 
-    # Geographic preference for region-expansion scoring
-    # Set to your geography: "apj", "emea", "americas", or "global" (no bias)
-    preferred_geography: str = "apj"
+    # Geographic preference for region-expansion scoring.
+    # "global" = no geographic bias, no badges — the neutral default for a
+    # fresh clone. Set YOUR deployment's preference ("apj", "emea",
+    # "americas") in the gitignored cdk.context.json, not here: this file is
+    # the generic default set for every deployment of the project.
+    # (docs/audit-remediation-plan.md item 20 — a personal preference used
+    # to ship here as the project default, silently applying a ±2.5-point
+    # scoring swing for everyone.)
+    preferred_geography: str = "global"
     region_expansion_bonus_local: float = 1.0     # Bonus when expansion includes your geography
     region_expansion_penalty_remote: float = -1.5  # Penalty when expansion is ONLY in other geographies
 
