@@ -348,7 +348,7 @@ class AiRadarAwsStack(Stack):
             hosted_zone = route53.HostedZone.from_hosted_zone_attributes(
                 self, "CustomDomainZone",
                 hosted_zone_id=hosted_zone_id,
-                zone_name=".".join(custom_domain.split(".")[1:]),  # e.g., "vonikakv.people.aws.dev"
+                zone_name=".".join(custom_domain.split(".")[1:]),  # parent zone, e.g. "example.com" for "news.example.com"
             )
             route53.ARecord(
                 self, "CustomDomainRecord",
