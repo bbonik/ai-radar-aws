@@ -663,11 +663,18 @@ class WebsiteBuilder:
                     tags_parts.append(f'<span class="tag tag-provider">{_sanitize_html(t)}</span>')
                 tags_parts.append('</div>\n')
             if a.geo_relevance:
+                # Geography renders as geo badges matching the announcement
+                # cards (owner review: was green concept-tag styling).
                 tags_parts.append('    <div class="report-tag-group"><span class="tag-group-label">Geography</span>')
+                geo_labels = {"global": ("geo-global", "Global"),
+                              "apj": ("geo-region", "APJ"),
+                              "emea": ("geo-region", "EMEA"),
+                              "americas": ("geo-region", "AMER")}
                 for geo in a.geo_relevance.split(","):
                     geo = geo.strip()
-                    if geo:
-                        tags_parts.append(f'<span class="tag tag-concept">{_sanitize_html(geo.upper() if geo != "global" else "Global")}</span>')
+                    if geo in geo_labels:
+                        css, label = geo_labels[geo]
+                        tags_parts.append(f'<span class="geo-badge {css}">{label}</span>')
                 tags_parts.append('</div>\n')
             tags_parts.append('  </div>\n')
             tags_parts.append('</section>')
@@ -2460,9 +2467,9 @@ JS_TEMPLATE = """\
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        datasets: {
-          bar: { maxBarThickness: 28 }  /* V3: no obese bars on short ranges */
-        },
+        /* maxBarThickness was tried and reverted (owner review): with few
+           dates (Last Week) capped bars looked lost in the empty space —
+           let Chart.js size bars to fill the range naturally. */
         plugins: {
           legend: {
             position: 'top',
