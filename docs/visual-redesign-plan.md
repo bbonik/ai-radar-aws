@@ -382,6 +382,21 @@ hue arc (teal→amber→red) before any thought of returning to categorical colo
 **Cost/risk**: zero new dependencies, zero data changes, zero infra changes beyond
 the Lambda bundle. Full revert of any item = restoring one CSS/template block.
 
+# V1+V2 live review (2026-08-14) — PASSED with two amendments
+
+The owner ran the acceptance test on the live site. Verdict: palette approved;
+4-vs-5 hue difference alone still borderline **but the word label resolves it** —
+exactly the redundancy V2 was designed to provide. Two amendments applied:
+
+1. **Star glyphs use the base palette tone, not the darker -text tone**, so the
+   stars and the card stripe always read as one color. The 10px word label keeps
+   the -text tone for legibility.
+2. **Uniform 6px stripe on all cards** — the 5★ thickness marker (V2c) was tried
+   and rejected: unequal stripes read as inconsistency rather than emphasis. The
+   word label carries the 4/5 distinction on its own.
+
+Also: the print "?" (8a) is confirmed minor/external — owner deprioritised.
+
 # Owner decisions (2026-08-14)
 
 1. V2: importance label on **all** cards.

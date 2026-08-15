@@ -1048,7 +1048,10 @@ body {
   padding: 1.5rem;
   box-shadow: var(--shadow);
   transition: var(--transition);
-  border-left: 4px solid var(--aws-border);
+  /* Owner review 2026-08-14: uniform 6px stripe on ALL cards (the 5-star
+     thickness marker was tried and rejected — the word label carries the
+     distinction; unequal stripes read as inconsistency, not emphasis). */
+  border-left: 6px solid var(--aws-border);
   display: flex;
   flex-direction: column;
 }
@@ -1060,9 +1063,6 @@ body {
 
 .announcement-card[data-importance="5"] {
   border-left-color: var(--star-5);
-  /* V2c: 5-star is marked categorically (thickness), not just chromatically —
-     the 4-vs-5 discrimination never rests on hue alone. */
-  border-left-width: 6px;
 }
 
 .announcement-card[data-importance="4"] {
@@ -1111,13 +1111,21 @@ body {
   letter-spacing: 0.06em;
 }
 
-/* Glyphs and labels use the darker -text tone of each hue for contrast on
-   white (the light yellow/orange fills are for borders and chart bars). */
-.importance-5 { color: var(--star-5-text); }
-.importance-4 { color: var(--star-4-text); }
-.importance-3 { color: var(--star-3-text); }
-.importance-2 { color: var(--star-2-text); }
-.importance-1 { color: var(--star-1-text); }
+/* Owner review 2026-08-14: star glyphs use the SAME tone as the card's
+   left stripe (base palette), so stripe and stars always read as one color.
+   The small word label keeps the darker -text tone of the same hue for
+   legibility at 10px on white. */
+.card-stars.importance-5 { color: var(--star-5); }
+.card-stars.importance-4 { color: var(--star-4); }
+.card-stars.importance-3 { color: var(--star-3); }
+.card-stars.importance-2 { color: var(--star-2); }
+.card-stars.importance-1 { color: var(--star-1); }
+
+.importance-label.importance-5 { color: var(--star-5-text); }
+.importance-label.importance-4 { color: var(--star-4-text); }
+.importance-label.importance-3 { color: var(--star-3-text); }
+.importance-label.importance-2 { color: var(--star-2-text); }
+.importance-label.importance-1 { color: var(--star-1-text); }
 
 .card-date {
   font-size: 0.8rem;
