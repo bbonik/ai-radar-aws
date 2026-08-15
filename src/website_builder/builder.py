@@ -1318,16 +1318,19 @@ a:focus-visible {
   border-top: 4px solid var(--aws-orange);
 }
 
+/* Header group 1 — meta line: rating anchors left, date anchors right
+   (mirrors the announcement cards), instead of floating side by side. */
 .report-meta {
   display: flex;
   flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
   gap: 1rem;
-  align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 1.1rem;
 }
 
 .report-meta .card-stars {
-  font-size: 1.2rem;
+  font-size: 1.15rem;
 }
 
 .report-meta .importance-label {
@@ -1335,37 +1338,50 @@ a:focus-visible {
 }
 
 .report-meta .date {
-  font-size: 0.9rem;
-  color: var(--aws-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
 }
 
-
+/* Header group 2 — title + subtitle read as one tight block */
 .report-title {
   font-size: 1.625rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.3;
-  margin-bottom: 0.6rem;
+  margin-bottom: 0.45rem;
   color: #0f172a;
 }
 
 .report-subtitle {
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 400;
-  line-height: 1.5;
-  color: var(--aws-text-secondary);
-  margin-bottom: 1rem;
-  max-width: 60ch;
+  line-height: 1.55;
+  color: #475569;
+  margin-bottom: 0;
+  max-width: 62ch;
 }
 
+/* Header group 3 — the action row (see .report-actions below): only Export
+   keeps the orange; the source link becomes a quiet outline button so two
+   orange treatments stop competing. */
 .report-source-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
   font-size: 0.85rem;
-  color: var(--aws-orange-dark);
+  font-weight: 500;
+  color: #334155;
   text-decoration: none;
+  transition: var(--transition);
 }
 
 .report-source-link:hover {
-  text-decoration: underline;
+  border-color: var(--aws-orange);
+  color: var(--aws-orange-dark);
 }
 
 /* V6: report body reading typography (overrides defaults set above) */
@@ -1378,8 +1394,11 @@ a:focus-visible {
 
 .report-actions {
   display: flex;
+  align-items: center;
   gap: 0.75rem;
-  margin-top: 1rem;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #e2e8f0;  /* divider separates actions from content */
 }
 
 .btn-pdf {
@@ -2936,15 +2955,18 @@ REPORT_TEMPLATE = """\
 
     <div id="report-content">
       <header class="report-header">
+        <!-- Three visual groups (owner review): balanced meta line,
+             tight title+subtitle block, single action row behind a
+             hairline divider. Same content, deliberate grouping. -->
         <div class="report-meta">
           {{STARS}}
           <span class="date">{{DATE}}</span>
         </div>
         <h1 class="report-title">{{TITLE}}</h1>
         {{SUBTITLE}}
-        <a href="{{LINK}}" class="report-source-link" target="_blank" rel="noopener noreferrer">View original announcement &rarr;</a>
         <div class="report-actions">
           <button class="btn-pdf" onclick="exportPDF()">Export as PDF</button>
+          <a href="{{LINK}}" class="report-source-link" target="_blank" rel="noopener noreferrer">View original announcement &rarr;</a>
         </div>
       </header>
 
