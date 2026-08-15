@@ -207,6 +207,39 @@ SLUG_MAX_BASE = 150   # S3 keys allow 1024 bytes; longest current AWS segment ~8
 SLUG_HASH_LEN = 8     # 4.3bn values; collision odds at 243 links ~7e-15
 
 
+# Level names shown next to the stars (V2a). Reading a word is instant and
+# error-free; color and star count become reinforcement, not the sole code.
+# Keep in sync with the chart legend labels in JS_TEMPLATE.
+IMPORTANCE_NAMES = {
+    1: "Peripheral",
+    2: "Standard",
+    3: "Notable",
+    4: "Important",
+    5: "Critical",
+}
+
+
+def _rating_html(level: int) -> str:
+    """Render the importance rating: gauge-style stars plus the level name.
+
+    Filled and empty stars are split into separate spans so the empty ones
+    render in a visible light gray — the row reads as a fill level without
+    counting glyphs (docs/visual-redesign-plan.md V2).
+    """
+    filled = "\u2605" * level
+    empty = "\u2606" * (5 - level)
+    name = IMPORTANCE_NAMES.get(level, "")
+    return (
+        f'<span class="card-rating">'
+        f'<span class="card-stars importance-{level}">'
+        f'<span class="stars-filled">{filled}</span>'
+        f'<span class="stars-empty">{empty}</span>'
+        f"</span>"
+        f'<span class="importance-label importance-{level}">{name}</span>'
+        f"</span>"
+    )
+
+
 def _slug_from_link(link: str) -> str:
     """Generate a URL-safe, collision-free slug from an announcement link.
 
@@ -438,7 +471,7 @@ class WebsiteBuilder:
     def _render_announcement_card(self, a: ProcessedAnnouncement) -> str:
         """Render a single announcement card for the index listing."""
         slug = _slug_from_link(a.link)
-        stars = "\u2605" * a.importance_level + "\u2606" * (5 - a.importance_level)
+        rating_html = _rating_html(a.importance_level)
         title_safe = _sanitize_html(a.title)
         date_sortable = _extract_date_sortable(a.pub_date)
         date_attr_safe = _sanitize_html(date_sortable)
@@ -495,7 +528,7 @@ class WebsiteBuilder:
             f'data-tags="{all_tags_attr}" '
             f'data-geo="{a.geo_relevance}">\n'
             f'  <div class="card-header">\n'
-            f'    <span class="card-stars importance-{a.importance_level}">{stars}</span>\n'
+            f'    {rating_html}\n'
             f'    <span class="card-date">{date_display}</span>\n'
             f'  </div>\n'
             f'  <h3 class="card-title"><a href="reports/{slug}.html">{title_safe}</a></h3>\n'
@@ -514,7 +547,7 @@ class WebsiteBuilder:
 
     def _generate_report_page(self, a: ProcessedAnnouncement) -> str:
         """Generate an individual report page for an announcement."""
-        stars = "\u2605" * a.importance_level + "\u2606" * (5 - a.importance_level)
+        stars = _rating_html(a.importance_level)
         title_safe = _sanitize_html(a.title)
         date_display = _format_date_display(a.pub_date)
         link_safe = _sanitize_html(a.link)
@@ -650,11 +683,23 @@ CSS_TEMPLATE = """\
   --aws-success: #1d8102;
   --aws-warning: #ff9900;
   --aws-error: #d13212;
-  --star-1: #9e9e9e;
-  --star-2: #2476F9;
-  --star-3: #24F93D;
-  --star-4: #f9a825;
-  --star-5: #f924e1;
+  /* Importance scale (docs/visual-redesign-plan.md V1): wide-arc sequential
+     ramp — every adjacent step differs in BOTH hue and lightness, so levels
+     are identifiable in isolation on small surfaces. Base tones for large
+     surfaces (card borders, chart bars); -text tones (one step darker, same
+     hue) for glyphs and labels against white. Never change one without the
+     other, and never ship this scale without the V2 word labels. */
+  --star-1: #d1d5db;
+  --star-2: #94a3b8;
+  --star-3: #facc15;
+  --star-4: #fb923c;
+  --star-5: #ef4444;
+  --star-1-text: #9ca3af;
+  --star-2-text: #64748b;
+  --star-3-text: #ca8a04;
+  --star-4-text: #ea580c;
+  --star-5-text: #b91c1c;
+  --star-empty: #e5e7eb;
   --radius: 8px;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.15);
@@ -984,6 +1029,9 @@ body {
 
 .announcement-card[data-importance="5"] {
   border-left-color: var(--star-5);
+  /* V2c: 5-star is marked categorically (thickness), not just chromatically —
+     the 4-vs-5 discrimination never rests on hue alone. */
+  border-left-width: 6px;
 }
 
 .announcement-card[data-importance="4"] {
@@ -1009,15 +1057,36 @@ body {
   margin-bottom: 0.75rem;
 }
 
-.card-stars {
-  font-size: 1rem;
+/* Rating group (V2): stars read as a gauge (visible empty slots), and the
+   level NAME does identification so color never carries meaning alone. */
+.card-rating {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
-.importance-5 { color: var(--star-5); }
-.importance-4 { color: var(--star-4); }
-.importance-3 { color: var(--star-3); }
-.importance-2 { color: var(--star-2); }
-.importance-1 { color: var(--star-1); }
+.card-stars {
+  font-size: 1rem;
+  letter-spacing: 1px;
+}
+
+.card-stars .stars-empty { color: var(--star-empty); }
+
+.importance-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Glyphs and labels use the darker -text tone of each hue for contrast on
+   white (the light yellow/orange fills are for borders and chart bars). */
+.importance-5 { color: var(--star-5-text); }
+.importance-4 { color: var(--star-4-text); }
+.importance-3 { color: var(--star-3-text); }
+.importance-2 { color: var(--star-2-text); }
+.importance-1 { color: var(--star-1-text); }
 
 .card-date {
   font-size: 0.8rem;
@@ -1140,8 +1209,12 @@ body {
   margin-bottom: 1rem;
 }
 
-.report-meta .stars {
+.report-meta .card-stars {
   font-size: 1.2rem;
+}
+
+.report-meta .importance-label {
+  font-size: 11px;
 }
 
 .report-meta .date {
@@ -2201,31 +2274,31 @@ JS_TEMPLATE = """\
           {
             label: '5-Star (Critical)',
             data: s5,
-            backgroundColor: '#f924e1',
+            backgroundColor: '#ef4444',
             borderRadius: 2
           },
           {
             label: '4-Star (Important)',
             data: s4,
-            backgroundColor: '#f9a825',
+            backgroundColor: '#fb923c',
             borderRadius: 2
           },
           {
             label: '3-Star (Notable)',
             data: s3,
-            backgroundColor: '#24F93D',
+            backgroundColor: '#facc15',
             borderRadius: 2
           },
           {
             label: '2-Star (Standard)',
             data: s2,
-            backgroundColor: '#2476F9',
+            backgroundColor: '#94a3b8',
             borderRadius: 2
           },
           {
             label: '1-Star (Peripheral)',
             data: s1,
-            backgroundColor: '#9e9e9e',
+            backgroundColor: '#d1d5db',
             borderRadius: 2
           }
         ]
@@ -2600,11 +2673,11 @@ INDEX_TEMPLATE = """\
         <p>Each announcement receives a point score based on multiple factors. The total score maps to a 1-5 star rating:</p>
 
         <div class="star-scale">
-          <span class="star-scale-item" style="border-left: 3px solid #9e9e9e;">1★ &lt; 2 pts</span>
-          <span class="star-scale-item" style="border-left: 3px solid #2476F9;">2★ &ge; 2 pts</span>
-          <span class="star-scale-item" style="border-left: 3px solid #24F93D;">3★ &ge; 3.5 pts</span>
-          <span class="star-scale-item" style="border-left: 3px solid #f9a825;">4★ &ge; 5 pts</span>
-          <span class="star-scale-item" style="border-left: 3px solid #f924e1;">5★ &ge; 6.5 pts</span>
+          <span class="star-scale-item" style="border-left: 3px solid #d1d5db;">1★ &lt; 2 pts</span>
+          <span class="star-scale-item" style="border-left: 3px solid #94a3b8;">2★ &ge; 2 pts</span>
+          <span class="star-scale-item" style="border-left: 3px solid #facc15;">3★ &ge; 3.5 pts</span>
+          <span class="star-scale-item" style="border-left: 3px solid #fb923c;">4★ &ge; 5 pts</span>
+          <span class="star-scale-item" style="border-left: 3px solid #ef4444;">5★ &ge; 6.5 pts</span>
         </div>
 
         <h3>Point Breakdown</h3>
@@ -2689,7 +2762,7 @@ REPORT_TEMPLATE = """\
     <div id="report-content">
       <header class="report-header">
         <div class="report-meta">
-          <span class="stars importance-{{IMPORTANCE_LEVEL}}">{{STARS}}</span>
+          {{STARS}}
           <span class="date">{{DATE}}</span>
         </div>
         <h1 class="report-title">{{TITLE}}</h1>
@@ -2799,11 +2872,11 @@ REPORT_TEMPLATE = """\
         <p>Each announcement receives a point score based on multiple factors. The total score maps to a 1-5 star rating:</p>
 
         <div class="star-scale">
-          <span class="star-scale-item" style="border-left: 3px solid #9e9e9e;">1★ &lt; 2 pts</span>
-          <span class="star-scale-item" style="border-left: 3px solid #2476F9;">2★ &ge; 2 pts</span>
-          <span class="star-scale-item" style="border-left: 3px solid #24F93D;">3★ &ge; 3.5 pts</span>
-          <span class="star-scale-item" style="border-left: 3px solid #f9a825;">4★ &ge; 5 pts</span>
-          <span class="star-scale-item" style="border-left: 3px solid #f924e1;">5★ &ge; 6.5 pts</span>
+          <span class="star-scale-item" style="border-left: 3px solid #d1d5db;">1★ &lt; 2 pts</span>
+          <span class="star-scale-item" style="border-left: 3px solid #94a3b8;">2★ &ge; 2 pts</span>
+          <span class="star-scale-item" style="border-left: 3px solid #facc15;">3★ &ge; 3.5 pts</span>
+          <span class="star-scale-item" style="border-left: 3px solid #fb923c;">4★ &ge; 5 pts</span>
+          <span class="star-scale-item" style="border-left: 3px solid #ef4444;">5★ &ge; 6.5 pts</span>
         </div>
 
         <h3>Point Breakdown</h3>

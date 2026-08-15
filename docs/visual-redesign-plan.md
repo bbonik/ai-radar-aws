@@ -35,17 +35,21 @@ verify it. Nothing is implemented until the owner signs off per item.
 
 ## Item index
 
+All items APPROVED by the owner 2026-08-14, with knob decisions recorded below and
+one amendment: **V3's weekly-aggregation threshold change was rejected** — the
+90-day threshold stays as-is.
+
 | ID | Item | Impact | Risk | Status |
 |----|------|--------|------|--------|
-| V1 | Importance color scale (wide-arc ramp) | High | Low — CSS variables | PROPOSED |
-| V2 | Redundant importance encoding (labels, gauge stars, 5★ marker) | High | Low | PROPOSED |
-| V3 | Timeline chart restyle | Medium | Low | PROPOSED |
-| V4 | Tag chip system normalisation | Medium | Low | PROPOSED |
-| V5 | Geo badges: replace emoji | Medium | Low | PROPOSED |
-| V6 | Typography scale | Medium | Low | PROPOSED |
-| V7 | Header polish + stats strip | Low-Med | Low | PROPOSED |
-| V8 | PDF / print fixes (incl. "?" button bug) | High for exports | Low | PROPOSED |
-| V9 | Micro-polish (hover, focus, footer link colors) | Low | Low | PROPOSED |
+| V1 | Importance color scale (wide-arc ramp) | High | Low — CSS variables | APPROVED (5★ = red `#ef4444`) |
+| V2 | Redundant importance encoding (labels, gauge stars, 5★ marker) | High | Low | APPROVED (label on ALL cards) |
+| V3 | Timeline chart restyle | Medium | Low | APPROVED **minus aggregation change** |
+| V4 | Tag chip system normalisation | Medium | Low | APPROVED (hard rule: tags never wrap to a 2nd line) |
+| V5 | Geo badges: replace emoji | Medium | Low | APPROVED (text only, no SVG) |
+| V6 | Typography scale | Medium | Low | APPROVED |
+| V7 | Header polish + stats strip | Low-Med | Low | APPROVED (stats strip = own hairline-bordered row) |
+| V8 | PDF / print fixes (incl. "?" button bug) | High for exports | Low | APPROVED |
+| V9 | Micro-polish (hover, focus, footer link colors) | Low | Low | APPROVED |
 
 Explicitly **out of scope** (rejected during analysis): dark mode, hosted webfonts,
 animation libraries, card-grid or filter-UX redesign, self-hosting Mermaid/Chart.js.
@@ -178,7 +182,7 @@ order puts 5★ mid-stack.
 |---|---|---|
 | Colors | V1 fill tones | one scale everywhere |
 | Stack order | 5★ at the **bottom** | most important segment on a stable baseline, comparable across bars |
-| Weekly aggregation threshold | >90 days → **>45 days** | keeps bars chunky in the 3-month view |
+| ~~Weekly aggregation threshold~~ | **REJECTED by owner** — stays at >90 days | daily granularity preferred in the 3-month view |
 | Bar style | `borderRadius: 3`, `maxBarThickness: 28` | reads "product", prevents obese bars on short ranges |
 | Y-gridlines | `color: #f1f5f9`, no x-gridlines, `ticks.maxTicksLimit: 6` | quieter frame |
 | Legend | 11px, point-style markers (rounded), more padding | legibility |
@@ -226,10 +230,16 @@ Plus: chip radius from pill to 4px (pills everywhere read "toy"; small radius re
 Filter-bar chips (currently white outlined) stay neutral but adopt the same radius
 and get a hover tint; the selected state stays brand orange.
 
-### Knob
+### Knob — DECIDED
 
-Card tag cap is currently 6 (services+types+concepts[:3]). Option to drop to 5 for
-less noise — owner's call, zero code risk either way.
+Owner's rule: the exact cap (5 vs 6) is unimportant; **what matters is that card
+tags always occupy exactly one line and never wrap to a second**. Since tag name
+lengths vary, a count cap alone cannot guarantee this. Implementation: keep the
+cap at 6 as the upper bound, and enforce the single line in CSS —
+`flex-wrap: nowrap; overflow: hidden;` on the tag row plus a right-edge fade-out
+mask (`mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent)`),
+so when long tags exceed the row, the overflow fades gracefully instead of
+clipping mid-chip or wrapping. Deterministic single line for any tag lengths.
 
 ---
 
@@ -244,18 +254,14 @@ in cards, report pages, and the About legend. Emoji render differently per
 OS/browser, can't be styled or colored, and are the single strongest "hobby
 project" signal in the UI.
 
-### Proposed
+### Proposed (per owner decision: text only, no icon)
 
-Text-only badges with a 10px inline-SVG globe (one path, `currentColor`, styleable):
-
-- One neutral style for regional badges: `#f8fafc` bg, `#cbd5e1` border, `#475569` text, 4px radius, 10px uppercase
-- `GLOBAL` gets a slightly stronger tint (`#eff6ff` / `#1d4ed8`) since it's the "good news" case
-- Same markup in cards, report tags section, About legend
-
-### Knob
-
-Drop the icon entirely (pure text) — even simpler; keep only if the SVG feels fussy
-in review.
+- Regional badges (`APJ`, `EMEA`, `AMER`): `#f8fafc` bg, `#cbd5e1` border,
+  `#475569` text, 4px radius, 10px uppercase, 600 weight
+- `GLOBAL` gets a slightly stronger tint (`#eff6ff` bg, `#bfdbfe` border,
+  `#1d4ed8` text) since it's the "good news" case
+- Same markup in cards, report tags section, and the About legend (all three
+  currently carry emoji)
 
 ---
 
@@ -373,11 +379,13 @@ hue arc (teal→amber→red) before any thought of returning to categorical colo
 **Cost/risk**: zero new dependencies, zero data changes, zero infra changes beyond
 the Lambda bundle. Full revert of any item = restoring one CSS/template block.
 
-# Open questions for the owner
+# Owner decisions (2026-08-14)
 
-1. V2 knob: importance label on all cards, or only 3★+?
-2. V4 knob: card tag cap stays 6, or drops to 5?
-3. V5 knob: keep the small SVG globe, or pure text badges?
-4. V7 knob: stats strip inline with the filter heading, or its own row?
-5. V1 knob: 5★ as red `#ef4444` (proposed) or deep orange `#c2410c` (more
-   on-brand, less discriminable from 4★)?
+1. V2: importance label on **all** cards.
+2. V4: cap flexible (≤6); the binding rule is **tags never wrap to a second line**
+   — enforced in CSS with nowrap + fade-out mask (see V4).
+3. V5: **text-only** badges, no SVG icon.
+4. V7: stats strip as its **own hairline-bordered row**.
+5. V1: 5★ = **red `#ef4444`** as proposed.
+6. V3 amendment: weekly-aggregation threshold **stays at 90 days** (45-day
+   proposal rejected).
