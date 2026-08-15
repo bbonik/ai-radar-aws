@@ -316,12 +316,15 @@ near-black on white; consistent with the token cleanup in V1/V4.
 
 **Status**: PROPOSED · contains one outright bug fix
 
-### 8a. BUG: floating "?" button prints on every page
+### 8a. "?" button on every PDF page — INVESTIGATED, NOT OURS
 
-The dark circular help button (bottom-right of every PDF page — see the export
-sample) is fixed-position chrome missing from the `@media print` hide list.
-Identify the element (it is not `.about-modal-overlay`, already hidden) and add it.
-Single-selector fix; the largest single improvement to export quality.
+Original diagnosis was wrong. A full search of the templates found **no such
+element**: no "?" glyph, no circular button, and the only fixed-position element
+(`.about-modal-overlay`) is already hidden in print. The dark "?" circle in the
+owner's export sample is injected at print time by the **owner's browser or a
+browser extension** (annotation/reader helpers commonly add floating widgets that
+get captured by print). Nothing to fix in this codebase — verification step: the
+owner re-exports from a clean/incognito browser profile to confirm it disappears.
 
 ### 8b. Related Resources: stop printing raw URLs
 

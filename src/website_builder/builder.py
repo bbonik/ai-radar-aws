@@ -207,6 +207,33 @@ SLUG_MAX_BASE = 150   # S3 keys allow 1024 bytes; longest current AWS segment ~8
 SLUG_HASH_LEN = 8     # 4.3bn values; collision odds at 243 links ~7e-15
 
 
+def _link_label(url: str) -> str:
+    """Human-readable label for a resource link (V8b).
+
+    Raw URLs wrap badly in print and read poorly on screen. Label format:
+    "domain — Last Path Segment As Words", truncated to ~70 chars. The full
+    URL stays in the href (and in a print-only line, since paper links
+    aren't clickable).
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    domain = parsed.netloc.removeprefix("www.")
+    segments = [s for s in parsed.path.split("/") if s]
+    if not segments:
+        return domain
+    tail = segments[-1]
+    # Strip file extensions and query-ish noise, de-hyphenate
+    tail = re.sub(r"\.(html?|php|aspx?)$", "", tail)
+    words = re.sub(r"[-_]+", " ", tail).strip()
+    if not words:
+        return domain
+    label = words[0].upper() + words[1:]
+    if len(label) > 70:
+        label = label[:69].rstrip() + "\u2026"
+    return f"{domain} \u2014 {label}"
+
+
 # Level names shown next to the stars (V2a). Reading a word is instant and
 # error-free; color and star count become reinforcement, not the sole code.
 # Keep in sync with the chart legend labels in JS_TEMPLATE.
@@ -630,9 +657,13 @@ class WebsiteBuilder:
 
         blogpost_links_html = ""
         if a.blogpost_links:
+            # Readable labels on screen and in print; the raw URL is kept in
+            # the href and shown in a small print-only line (V8b), since
+            # links on paper aren't clickable.
             links_items = "\n".join(
                 f'<li><a href="{_sanitize_html(link)}" target="_blank" '
-                f'rel="noopener noreferrer">{_sanitize_html(link)}</a></li>'
+                f'rel="noopener noreferrer">{_sanitize_html(_link_label(link))}</a>'
+                f'<span class="link-url">{_sanitize_html(link)}</span></li>'
                 for link in a.blogpost_links
             )
             blogpost_links_html = (
@@ -1673,9 +1704,16 @@ body {
    Produces a real, text-based (selectable, copyable) vector PDF with
    correct fonts, aligned clickable links, and clean page breaks.
    ========================================================================= */
+/* Print-only elements stay invisible on screen */
+.link-url,
+.print-footer {
+  display: none;
+}
+
 @page {
   size: A4;
-  margin: 15mm;
+  /* Extra bottom margin reserves room for the repeating print footer */
+  margin: 15mm 15mm 18mm 15mm;
 }
 
 @media print {
@@ -1713,9 +1751,12 @@ body {
     box-shadow: none !important;
   }
 
-  /* Avoid slicing content across page boundaries */
-  .report-section,
+  /* Page composition (V8c): text sections MAY split across pages (their
+     list items still won't slice), so What's New can start on page 1
+     beneath the visual summary instead of leaving a half page of
+     whitespace. Only the diagram and tags block stay atomic. */
   .mermaid-section,
+  .report-tags-section,
   .report-tag-group,
   .blogpost-links li,
   li {
@@ -1745,12 +1786,37 @@ body {
     width: 100% !important;
     max-width: 100% !important;
     height: auto !important;
+    /* V8d: a tall diagram must never overflow the printable page */
+    max-height: 210mm;
   }
 
   /* Keep links visible and readable in print (they remain clickable) */
   a {
     color: #b45f06 !important;
     text-decoration: none;
+  }
+
+  /* V8b: on paper links aren't clickable — show the raw URL in a small
+     muted line under each readable label */
+  .link-url {
+    display: block;
+    font-size: 8pt;
+    color: #94a3b8;
+    word-break: break-all;
+  }
+
+  /* V8c: slim repeating footer (fixed elements repeat per page in print) */
+  .print-footer {
+    display: flex !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    justify-content: space-between;
+    font-size: 8pt;
+    color: #94a3b8;
+    border-top: 0.5pt solid #e2e8f0;
+    padding-top: 4pt;
   }
 }
 """
@@ -2916,6 +2982,12 @@ REPORT_TEMPLATE = """\
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- V8c: repeats at the foot of every printed page; invisible on screen -->
+  <div class="print-footer">
+    <span>AI Radar AWS &mdash; AWS AI/ML news, curated &amp; explained</span>
+    <span>{{DATE}}</span>
   </div>
 
   <script src="../assets/app.js"></script>
