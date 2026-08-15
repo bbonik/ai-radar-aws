@@ -1077,7 +1077,7 @@ body {
 /* Announcement Cards */
 .announcements-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(350px, 100%), 1fr));
   gap: 1.5rem;
 }
 
@@ -1093,6 +1093,11 @@ body {
   border-left: 6px solid var(--aws-border);
   display: flex;
   flex-direction: column;
+  /* Mobile fix: without this, the nowrap tag row's content width propagates
+     up as the grid item's minimum, pushing cards wider than the phone
+     viewport (cropped right edge). min-width: 0 lets the card shrink to the
+     track and the tag row clip+fade as designed. */
+  min-width: 0;
 }
 
 .announcement-card:hover {
@@ -1281,6 +1286,7 @@ a:focus-visible {
   display: flex;
   flex-wrap: nowrap;
   overflow: hidden;
+  min-width: 0;  /* mobile fix: never dictate the card's minimum width */
   gap: 0.25rem;
   margin: 0.5rem 0;
   mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
@@ -1740,7 +1746,7 @@ a:focus-visible {
 /* Responsive Design */
 @media (max-width: 1024px) {
   .announcements-grid {
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
   }
 }
 
