@@ -493,7 +493,23 @@ class WebsiteBuilder:
             self._render_announcement_card(a) for a in announcements
         )
 
-        return INDEX_TEMPLATE.replace("{{CARDS}}", cards_html)
+        # Stats strip (V7): an automated site should read as alive. All
+        # values are known at build time — zero runtime cost.
+        count = len(announcements)
+        latest = max(
+            (_extract_date_sortable(a.pub_date) for a in announcements),
+            default="",
+        )
+        stats_html = (
+            f"{count} announcements &middot; updated daily"
+            + (f" &middot; latest {latest}" if latest else "")
+        )
+
+        return (
+            INDEX_TEMPLATE
+            .replace("{{CARDS}}", cards_html)
+            .replace("{{STATS}}", stats_html)
+        )
 
     def _render_announcement_card(self, a: ProcessedAnnouncement) -> str:
         """Render a single announcement card for the index listing."""
@@ -535,16 +551,18 @@ class WebsiteBuilder:
         if a.geo_relevance:
             geos = a.geo_relevance.split(",")
             badges = []
+            # Text-only badges (V5): emoji render inconsistently per OS and
+            # can't be styled — the styling lives in the .geo-badge CSS.
             for geo in geos:
                 geo = geo.strip()
                 if geo == "global":
-                    badges.append('<span class="geo-badge geo-global">\U0001f310 Global</span>')
+                    badges.append('<span class="geo-badge geo-global">Global</span>')
                 elif geo == "apj":
-                    badges.append('<span class="geo-badge geo-region">\U0001f30f APJ</span>')
+                    badges.append('<span class="geo-badge geo-region">APJ</span>')
                 elif geo == "emea":
-                    badges.append('<span class="geo-badge geo-region">\U0001f30d EMEA</span>')
+                    badges.append('<span class="geo-badge geo-region">EMEA</span>')
                 elif geo == "americas":
-                    badges.append('<span class="geo-badge geo-region">\U0001f30e AMER</span>')
+                    badges.append('<span class="geo-badge geo-region">AMER</span>')
             if badges:
                 geo_badge_html = '    <div class="geo-badges">' + ''.join(badges) + '</div>\n'
 
@@ -800,8 +818,8 @@ body {
 }
 
 .tagline {
-  font-size: 0.65rem;
-  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.75rem;
+  color: #94a3b8;  /* V6: was rgba-white at 0.6 — near-invisible on navy */
   font-weight: 400;
   letter-spacing: 0.3px;
   margin-top: -2px;
@@ -815,17 +833,20 @@ body {
 }
 
 .header-nav a {
-  color: var(--aws-white);
+  color: #cbd5e1;
   text-decoration: none;
   margin-left: 1.5rem;
-  font-size: 0.9rem;
-  opacity: 0.85;
+  font-size: 0.85rem;
+  font-weight: 500;
   transition: var(--transition);
 }
 
 .header-nav a:hover {
-  opacity: 1;
-  color: var(--aws-orange);
+  color: var(--aws-white);
+  text-decoration: underline;
+  text-decoration-color: var(--aws-orange);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
 }
 
 /* Main Content */
@@ -833,6 +854,16 @@ body {
   max-width: 1400px;
   margin: 0 auto;
   padding: 2rem;
+}
+
+/* Stats strip (V7): own hairline-bordered row per owner decision */
+.stats-strip {
+  font-size: 12px;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+  padding-bottom: 0.6rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 /* Filters Section */
@@ -919,7 +950,7 @@ body {
 .filter-chip {
   font-size: 0.75rem;
   padding: 0.2rem 0.6rem;
-  border-radius: 12px;
+  border-radius: 4px;  /* V4: matches the card chip radius */
   border: 1px solid var(--aws-border);
   background: var(--aws-white);
   color: var(--aws-text-secondary);
@@ -931,6 +962,7 @@ body {
 .filter-chip:hover {
   border-color: var(--aws-orange);
   color: var(--aws-orange-dark);
+  background: #fff7ed;  /* V9: subtle warm tint on hover */
 }
 
 .filter-chip.active {
@@ -1058,7 +1090,21 @@ body {
 
 .announcement-card:hover {
   box-shadow: var(--shadow-hover);
-  transform: translateY(-2px);
+  transform: translateY(-1px);  /* V9: subtler lift */
+}
+
+/* V9: visible keyboard focus + brand-tinted selection */
+.filter-chip:focus-visible,
+.tag:focus-visible,
+.sort-select:focus-visible,
+.filter-reset:focus-visible,
+a:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+}
+
+::selection {
+  background: #ffedd5;
 }
 
 .announcement-card[data-importance="5"] {
@@ -1127,20 +1173,25 @@ body {
 .importance-label.importance-2 { color: var(--star-2-text); }
 .importance-label.importance-1 { color: var(--star-1-text); }
 
+/* Typography scale (V6): title / summary / meta separated by size, weight
+   AND color — not boldness alone. Slate grays instead of near-black. */
 .card-date {
-  font-size: 0.8rem;
-  color: var(--aws-text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
 }
 
 .card-title {
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 1.03rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   margin-bottom: 0.5rem;
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
 .card-title a {
-  color: var(--aws-text);
+  color: #0f172a;
   text-decoration: none;
   transition: var(--transition);
 }
@@ -1150,8 +1201,9 @@ body {
 }
 
 .card-summary {
-  font-size: 0.875rem;
-  color: var(--aws-text-secondary);
+  font-size: 0.845rem;
+  color: #475569;
+  line-height: 1.55;
   margin-bottom: 1rem;
   display: -webkit-box;
   -webkit-line-clamp: 3;
@@ -1187,35 +1239,54 @@ body {
   flex-wrap: nowrap;
 }
 
+/* Geo badges (V5): text-only per owner decision — emoji render differently
+   on every OS and can't be styled. Regional = neutral; GLOBAL = light tint
+   (the "good news" case). */
 .geo-badge {
-  font-size: 0.7rem;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   padding: 0.2rem 0.5rem;
-  border-radius: 10px;
-  font-weight: 500;
+  border-radius: 4px;
   white-space: nowrap;
 }
 
 .geo-local, .geo-region {
-  background: #e8f5e9;
-  color: #2e7d32;
-  border: 1px solid #a5d6a7;
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #cbd5e1;
 }
 
 .geo-global {
-  background: #e3f2fd;
-  color: #1565c0;
-  border: 1px solid #90caf9;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
 }
 
-/* Tag Chips */
-.card-tags { display: flex; flex-wrap: wrap; gap: 0.25rem; margin: 0.5rem 0; }
-.tag { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 12px; font-weight: 500; cursor: pointer; transition: var(--transition); }
+/* Tag Chips (V4): one consistent formula across dimensions — tint-50
+   background, tint-200 hairline border, shade-700 text, identical
+   lightness. 4px radius: pills read "toy", small radius reads "data".
+   Owner rule: card tags occupy EXACTLY one line, never two — enforced by
+   nowrap + hidden overflow + a right-edge fade so long tag sets trail off
+   gracefully instead of clipping mid-chip or wrapping. */
+.card-tags {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  gap: 0.25rem;
+  margin: 0.5rem 0;
+  mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 24px), transparent);
+}
+.card-tags .tag { flex: 0 0 auto; }
+.tag { font-size: 11px; padding: 0.15rem 0.45rem; border-radius: 4px; font-weight: 500; border: 1px solid transparent; cursor: pointer; transition: var(--transition); }
 .tag:hover { opacity: 0.8; }
-.tag-service { background: #e3f2fd; color: #1565c0; }
-.tag-type { background: #f3e5f5; color: #7b1fa2; }
-.tag-concept { background: #e8f5e9; color: #2e7d32; }
-.tag-usecase { background: #fff3e0; color: #e65100; }
-.tag-provider { background: #fce4ec; color: #c62828; }
+.tag-service { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+.tag-type { background: #faf5ff; border-color: #e9d5ff; color: #7e22ce; }
+.tag-concept { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+.tag-usecase { background: #fff7ed; border-color: #fed7aa; color: #c2410c; }
+.tag-provider { background: #fdf2f8; border-color: #fbcfe8; color: #be185d; }
 
 /* Tag Filter - kept for card tag chips */
 
@@ -1263,11 +1334,12 @@ body {
 
 
 .report-title {
-  font-size: 1.75rem;
+  font-size: 1.625rem;
   font-weight: 700;
+  letter-spacing: -0.02em;
   line-height: 1.3;
   margin-bottom: 0.6rem;
-  color: var(--aws-dark);
+  color: #0f172a;
 }
 
 .report-subtitle {
@@ -1287,6 +1359,14 @@ body {
 
 .report-source-link:hover {
   text-decoration: underline;
+}
+
+/* V6: report body reading typography (overrides defaults set above) */
+.report-section p,
+.report-section li {
+  font-size: 0.94rem;
+  color: #334155;
+  line-height: 1.65;
 }
 
 .report-actions {
@@ -2349,45 +2429,55 @@ JS_TEMPLATE = """\
             label: '5-Star (Critical)',
             data: s5,
             backgroundColor: '#ef4444',
-            borderRadius: 2
+            borderRadius: 3
           },
           {
             label: '4-Star (Important)',
             data: s4,
             backgroundColor: '#fb923c',
-            borderRadius: 2
+            borderRadius: 3
           },
           {
             label: '3-Star (Notable)',
             data: s3,
             backgroundColor: '#facc15',
-            borderRadius: 2
+            borderRadius: 3
           },
           {
             label: '2-Star (Standard)',
             data: s2,
             backgroundColor: '#94a3b8',
-            borderRadius: 2
+            borderRadius: 3
           },
           {
             label: '1-Star (Peripheral)',
             data: s1,
             backgroundColor: '#d1d5db',
-            borderRadius: 2
+            borderRadius: 3
           }
         ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        datasets: {
+          bar: { maxBarThickness: 28 }  /* V3: no obese bars on short ranges */
+        },
         plugins: {
           legend: {
             position: 'top',
-            labels: { font: { size: 11 } }
+            labels: {
+              font: { size: 11 },
+              usePointStyle: true,
+              pointStyle: 'rectRounded',
+              padding: 14
+            }
           },
           tooltip: {
             mode: 'index',
-            intersect: false
+            intersect: false,
+            backgroundColor: '#1e293b',
+            padding: 10
           }
         },
         scales: {
@@ -2399,7 +2489,8 @@ JS_TEMPLATE = """\
           y: {
             stacked: true,
             beginAtZero: true,
-            ticks: { stepSize: 1, font: { size: 11 } }
+            grid: { color: '#f1f5f9' },  /* V3: quieter frame */
+            ticks: { precision: 0, maxTicksLimit: 6, font: { size: 11 } }
           }
         }
       }
@@ -2604,6 +2695,9 @@ INDEX_TEMPLATE = """\
   </header>
 
   <main class="main-content">
+    <!-- Stats strip (V7): build-time numbers, own hairline row per owner -->
+    <div class="stats-strip">{{STATS}}</div>
+
     <!-- Filters -->
     <section class="filters-section" id="filters">
       <div class="filters-header">
@@ -2779,10 +2873,10 @@ INDEX_TEMPLATE = """\
         <p>Each announcement card shows a small badge indicating whether the feature is available in your region:</p>
 
         <div class="geo-legend">
-          <div class="geo-legend-item"><span class="geo-badge geo-global">&#127760; Global</span> Available in all regions</div>
-          <div class="geo-legend-item"><span class="geo-badge geo-region">&#127759; APJ</span> Asia Pacific</div>
-          <div class="geo-legend-item"><span class="geo-badge geo-region">&#127757; EMEA</span> Europe / Middle East / Africa</div>
-          <div class="geo-legend-item"><span class="geo-badge geo-region">&#127758; AMER</span> Americas (US, Canada, South America)</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-global">Global</span> Available in all regions</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-region">APJ</span> Asia Pacific</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-region">EMEA</span> Europe / Middle East / Africa</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-region">AMER</span> Americas (US, Canada, South America)</div>
           <div class="geo-legend-item"><span style="color:var(--aws-text-secondary);">No badge</span> Geography unknown</div>
         </div>
 
@@ -2978,10 +3072,10 @@ REPORT_TEMPLATE = """\
         <p>Each announcement card shows a small badge indicating whether the feature is available in your region:</p>
 
         <div class="geo-legend">
-          <div class="geo-legend-item"><span class="geo-badge geo-global">&#127760; Global</span> Available in all regions</div>
-          <div class="geo-legend-item"><span class="geo-badge geo-region">&#127759; APJ</span> Asia Pacific</div>
-          <div class="geo-legend-item"><span class="geo-badge geo-region">&#127757; EMEA</span> Europe / Middle East / Africa</div>
-          <div class="geo-legend-item"><span class="geo-badge geo-region">&#127758; AMER</span> Americas (US, Canada, South America)</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-global">Global</span> Available in all regions</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-region">APJ</span> Asia Pacific</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-region">EMEA</span> Europe / Middle East / Africa</div>
+          <div class="geo-legend-item"><span class="geo-badge geo-region">AMER</span> Americas (US, Canada, South America)</div>
           <div class="geo-legend-item"><span style="color:var(--aws-text-secondary);">No badge</span> Geography unknown</div>
         </div>
 

@@ -43,13 +43,13 @@ one amendment: **V3's weekly-aggregation threshold change was rejected** — the
 |----|------|--------|------|--------|
 | V1 | Importance color scale (wide-arc ramp) | High | Low — CSS variables | APPROVED (5★ = red `#ef4444`) |
 | V2 | Redundant importance encoding (labels, gauge stars, 5★ marker) | High | Low | APPROVED (label on ALL cards) |
-| V3 | Timeline chart restyle | Medium | Low | APPROVED **minus aggregation change** |
-| V4 | Tag chip system normalisation | Medium | Low | APPROVED (hard rule: tags never wrap to a 2nd line) |
-| V5 | Geo badges: replace emoji | Medium | Low | APPROVED (text only, no SVG) |
-| V6 | Typography scale | Medium | Low | APPROVED |
-| V7 | Header polish + stats strip | Low-Med | Low | APPROVED (stats strip = own hairline-bordered row) |
-| V8 | PDF / print fixes (incl. "?" button bug) | High for exports | Low | APPROVED |
-| V9 | Micro-polish (hover, focus, footer link colors) | Low | Low | APPROVED |
+| V3 | Timeline chart restyle | Medium | Low | DONE 2026-08-14 (aggregation untouched per owner) |
+| V4 | Tag chip system normalisation | Medium | Low | DONE 2026-08-14 (single-line rule via nowrap + fade mask) |
+| V5 | Geo badges: replace emoji | Medium | Low | DONE 2026-08-14 (text only) |
+| V6 | Typography scale | Medium | Low | DONE 2026-08-14 |
+| V7 | Header polish + stats strip | Low-Med | Low | DONE 2026-08-14 (own hairline row) |
+| V8 | PDF / print fixes ("?" was external, not ours) | High for exports | Low | DONE 2026-08-14 |
+| V9 | Micro-polish (hover, focus, selection) | Low | Low | DONE 2026-08-14 |
 
 Explicitly **out of scope** (rejected during analysis): dark mode, hosted webfonts,
 animation libraries, card-grid or filter-UX redesign, self-hosting Mermaid/Chart.js.
