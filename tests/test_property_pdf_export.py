@@ -255,10 +255,11 @@ def test_property16_header_metadata_in_report_content_div(
         "Publication date missing from #report-content div (won't appear in PDF header)"
     )
 
-    # Importance stars must be within the report-content div
-    stars = "\u2605" * announcement.importance_level + "\u2606" * (5 - announcement.importance_level)
-    assert stars in report_content_div, (
-        "Importance level stars missing from #report-content div (won't appear in PDF header)"
+    # Importance rating (gauge stars + level name) must be within the
+    # report-content div so it appears in the PDF header (V2 markup)
+    filled = "\u2605" * announcement.importance_level
+    assert f'<span class="stars-filled">{filled}</span>' in report_content_div, (
+        "Importance rating missing from #report-content div (won't appear in PDF header)"
     )
 
 

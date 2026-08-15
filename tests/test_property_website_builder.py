@@ -187,10 +187,19 @@ def test_property12_report_html_contains_all_required_content(
         "Publication date missing from report HTML"
     )
 
-    # Importance level indicator (star characters)
-    stars = "\u2605" * announcement.importance_level + "\u2606" * (5 - announcement.importance_level)
-    assert stars in report_html, (
-        f"Importance level indicator (stars) missing from report HTML"
+    # Importance level indicator: gauge-style stars (filled + empty spans)
+    # plus the level name in words (docs/visual-redesign-plan.md V2)
+    filled = "\u2605" * announcement.importance_level
+    empty = "\u2606" * (5 - announcement.importance_level)
+    assert f'<span class="stars-filled">{filled}</span>' in report_html, (
+        "Filled star gauge missing from report HTML"
+    )
+    assert f'<span class="stars-empty">{empty}</span>' in report_html, (
+        "Empty star gauge missing from report HTML"
+    )
+    from src.website_builder.builder import IMPORTANCE_NAMES
+    assert IMPORTANCE_NAMES[announcement.importance_level] in report_html, (
+        "Importance level name missing from report HTML"
     )
 
     # AWS service name is no longer rendered in the report header (legacy field
