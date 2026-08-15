@@ -6,7 +6,12 @@ import pytest
 from src.config import Config
 from src.shared.logger import StructuredLogger
 from src.shared.models import RSSItem, ResearchContext, PageContent
-from src.pipeline.research_agent import ResearchAgent, _TextExtractor, _SAFETY_MARGIN_MS
+from src.pipeline.research_agent import (
+    ResearchAgent,
+    _TextExtractor,
+    _GATE_RESERVATION_MS,
+    _SAFETY_MARGIN_MS,
+)
 
 
 @pytest.fixture
@@ -51,7 +56,12 @@ def sample_item():
 
 
 class TestHasSufficientTime:
-    """Tests for the time-checking logic."""
+    """Tests for the start-gate logic.
+
+    The gate reserves a fixed 90 s (+ 30 s margin) rather than the full
+    theoretical per-item maximum — the budget itself is enforced by the
+    in-loop deadline. Plan: docs/audit-remediation-plan.md item 8 (D7).
+    """
 
     def test_sufficient_time_returns_true(self, config, logger, mock_context_plenty_of_time):
         """Agent proceeds when there is plenty of remaining time."""
@@ -64,19 +74,88 @@ class TestHasSufficientTime:
         assert agent._has_sufficient_time() is False
 
     def test_exact_threshold_returns_true(self, config, logger):
-        """Agent proceeds when remaining time exactly equals the threshold."""
+        """Gate opens at exactly reservation (90s) + margin (30s) = 120s."""
         context = MagicMock()
-        # Exactly at threshold: research_timeout (300) * 1000 + safety_margin (30000) = 330000
-        context.get_remaining_time_in_millis.return_value = 330_000
+        context.get_remaining_time_in_millis.return_value = (
+            _GATE_RESERVATION_MS + _SAFETY_MARGIN_MS
+        )
         agent = ResearchAgent(config=config, context=context, logger=logger)
         assert agent._has_sufficient_time() is True
 
     def test_one_below_threshold_returns_false(self, config, logger):
         """Agent skips when remaining time is one ms below threshold."""
         context = MagicMock()
-        context.get_remaining_time_in_millis.return_value = 329_999
+        context.get_remaining_time_in_millis.return_value = (
+            _GATE_RESERVATION_MS + _SAFETY_MARGIN_MS - 1
+        )
         agent = ResearchAgent(config=config, context=context, logger=logger)
         assert agent._has_sufficient_time() is False
+
+    def test_gate_opens_where_old_scheme_silently_skipped(self, config, logger):
+        """The regression this change exists for: with 5 minutes left in the
+        Lambda a typical item can easily be researched, but the old gate
+        (330 s reservation) skipped it silently."""
+        context = MagicMock()
+        context.get_remaining_time_in_millis.return_value = 300_000  # 5 min
+        agent = ResearchAgent(config=config, context=context, logger=logger)
+        assert agent._has_sufficient_time() is True
+
+
+class TestResearchDeadline:
+    """The per-item budget is a ceiling enforced mid-loop, not a reservation."""
+
+    def _item_with_urls(self, n: int) -> RSSItem:
+        hrefs = " ".join(
+            f'<a href="https://example.com/page-{i}">p{i}</a>' for i in range(n)
+        )
+        return RSSItem(
+            title="Test",
+            description=hrefs,
+            pub_date="2025-01-15",
+            link="https://aws.amazon.com/whats-new/deadline-test",
+        )
+
+    def test_partial_content_returned_when_budget_exceeded(
+        self, config, logger, mock_context_plenty_of_time
+    ):
+        """URLs fetched before the deadline are kept; the rest are skipped."""
+        agent = ResearchAgent(
+            config=config, context=mock_context_plenty_of_time, logger=logger
+        )
+        item = self._item_with_urls(5)
+
+        fetched = []
+
+        def fake_fetch(url):
+            fetched.append(url)
+            return PageContent(url=url, text="content", title="t")
+
+        # Simulate the budget expiring after the second fetch
+        clock = iter([0.0, 0.0, 0.0, 10_000.0, 10_000.0, 10_000.0])
+        with patch.object(agent, "_fetch_and_extract", side_effect=fake_fetch), \
+             patch("src.pipeline.research_agent.time.monotonic", side_effect=clock):
+            result = agent.research(item)
+
+        assert result.skipped is False
+        assert 0 < len(result.gathered_content) < 6
+        assert len(fetched) == len(result.gathered_content)
+
+    def test_lambda_margin_stops_research_mid_item(self, config, logger):
+        """Even inside the budget, research stops when the Lambda margin nears."""
+        context = MagicMock()
+        # Gate passes, then remaining time collapses below the margin
+        context.get_remaining_time_in_millis.side_effect = [600_000, 600_000, 25_000, 25_000]
+        agent = ResearchAgent(config=config, context=context, logger=logger)
+        item = self._item_with_urls(4)
+
+        with patch.object(
+            agent, "_fetch_and_extract",
+            side_effect=lambda url: PageContent(url=url, text="x", title="t"),
+        ):
+            result = agent.research(item)
+
+        assert result.skipped is False
+        assert len(result.gathered_content) < 5
 
 
 class TestExtractUrls:
@@ -248,3 +327,66 @@ class TestTextExtractor:
         extractor.feed("")
         assert extractor.text == ""
         assert extractor.title == ""
+
+
+class TestOutboundFetchBounds:
+    """Fetch hardening (docs/audit-remediation-plan.md item 13): size cap,
+    URL cap, https-only. Prerequisite for the multi-source track, which
+    feeds user-submitted URLs (Hacker News) into this exact code path."""
+
+    def test_url_count_capped_at_maximum(self, config, logger, mock_context_plenty_of_time):
+        from src.pipeline.research_agent import _MAX_URLS_PER_ITEM
+
+        hrefs = " ".join(
+            f'<a href="https://example.com/p{i}">x</a>' for i in range(20)
+        )
+        item = RSSItem(title="t", description=hrefs, pub_date="2025-01-15",
+                       link="https://aws.amazon.com/whats-new/cap-test")
+        agent = ResearchAgent(config=config, context=mock_context_plenty_of_time, logger=logger)
+
+        urls = agent._extract_urls(item)
+
+        assert len(urls) == _MAX_URLS_PER_ITEM
+        assert urls[0] == item.link  # own link always keeps the first slot
+
+    def test_http_urls_are_dropped(self, config, logger, mock_context_plenty_of_time):
+        item = RSSItem(
+            title="t",
+            description='<a href="http://insecure.example.com/page">x</a> '
+                        '<a href="https://secure.example.com/page">y</a>',
+            pub_date="2025-01-15",
+            link="https://aws.amazon.com/whats-new/scheme-test",
+        )
+        agent = ResearchAgent(config=config, context=mock_context_plenty_of_time, logger=logger)
+
+        urls = agent._extract_urls(item)
+
+        assert "https://secure.example.com/page" in urls
+        assert all(u.startswith("https://") for u in urls)
+
+    def test_oversized_response_truncated_not_raised(
+        self, config, logger, mock_context_plenty_of_time
+    ):
+        from src.pipeline.research_agent import _MAX_RESPONSE_BYTES
+
+        big_html = b"<html><title>big</title><body>" + b"A" * (_MAX_RESPONSE_BYTES + 100_000)
+
+        class FakeResponse:
+            headers = {"Content-Type": "text/html; charset=utf-8"}
+            def read(self, n=-1):
+                return big_html[:n] if n and n > 0 else big_html
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+
+        FakeResponse.headers = MagicMock()
+        FakeResponse.headers.get = lambda k, d="": "text/html; charset=utf-8"
+
+        agent = ResearchAgent(config=config, context=mock_context_plenty_of_time, logger=logger)
+        with patch("src.pipeline.research_agent.urlopen", return_value=FakeResponse()):
+            page = agent._fetch_and_extract("https://example.com/huge")
+
+        # Truncated, decoded, and extracted — no exception, bounded memory
+        assert page.title == "big"
+        assert len(page.text) <= _MAX_RESPONSE_BYTES

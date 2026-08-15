@@ -12,7 +12,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from src.config import Config
-from src.pipeline.research_agent import ResearchAgent, _SAFETY_MARGIN_MS
+from src.pipeline.research_agent import ResearchAgent, _GATE_RESERVATION_MS, _SAFETY_MARGIN_MS
 from src.shared.logger import StructuredLogger
 from src.shared.models import RSSItem
 
@@ -54,38 +54,35 @@ def test_property7_skip_decision_matches_threshold_formula(
 ):
     """Property 7: Research agent respects remaining execution time.
 
-    For any Lambda execution context with a given remaining time in milliseconds,
-    and a configured per-announcement research timeout, the Research Agent SHALL
-    skip research if remaining_time_ms < (research_timeout_per_announcement × 1000 + safety_margin).
+    Revised contract (docs/audit-remediation-plan.md item 8, decision D7):
+    the start gate requires a FIXED reservation (_GATE_RESERVATION_MS +
+    _SAFETY_MARGIN_MS), independent of the configured per-item timeout —
+    the timeout is a ceiling enforced by the in-loop deadline, not a
+    reservation. The gate decision is deterministic either side of the
+    threshold, and independent of research_timeout.
 
-    The skip decision is deterministic: if remaining time is below the threshold,
-    research is skipped (returns ResearchContext with skipped=True and empty gathered_content).
-    If remaining time is at or above the threshold, research proceeds.
-
-    **Validates: Requirements 4.7, 4.8**
+    **Validates: Requirements 4.7, 4.8 (as amended by the remediation plan)**
     """
     config = Config()
     config.research_timeout_per_announcement = research_timeout
 
     agent = _make_agent(remaining_ms=remaining_ms, config=config)
 
-    # Compute the threshold
-    threshold_ms = research_timeout * 1000 + _SAFETY_MARGIN_MS
+    threshold_ms = _GATE_RESERVATION_MS + _SAFETY_MARGIN_MS
 
-    # Check the internal decision
     has_time = agent._has_sufficient_time()
 
     if remaining_ms >= threshold_ms:
         assert has_time is True, (
             f"Agent should proceed when remaining_ms={remaining_ms} >= "
-            f"threshold={threshold_ms} (timeout={research_timeout}s × 1000 + "
-            f"safety_margin={_SAFETY_MARGIN_MS}ms)"
+            f"threshold={threshold_ms} (fixed gate, independent of "
+            f"research_timeout={research_timeout})"
         )
     else:
         assert has_time is False, (
             f"Agent should skip when remaining_ms={remaining_ms} < "
-            f"threshold={threshold_ms} (timeout={research_timeout}s × 1000 + "
-            f"safety_margin={_SAFETY_MARGIN_MS}ms)"
+            f"threshold={threshold_ms} (fixed gate, independent of "
+            f"research_timeout={research_timeout})"
         )
 
 
@@ -108,7 +105,7 @@ def test_property7_research_returns_skipped_when_time_insufficient(
     config = Config()
     config.research_timeout_per_announcement = research_timeout
 
-    threshold_ms = research_timeout * 1000 + _SAFETY_MARGIN_MS
+    threshold_ms = _GATE_RESERVATION_MS + _SAFETY_MARGIN_MS
 
     # Only test the insufficient-time case
     if remaining_ms >= threshold_ms:
@@ -151,7 +148,7 @@ def test_property7_research_proceeds_when_time_sufficient(
     config = Config()
     config.research_timeout_per_announcement = research_timeout
 
-    threshold_ms = research_timeout * 1000 + _SAFETY_MARGIN_MS
+    threshold_ms = _GATE_RESERVATION_MS + _SAFETY_MARGIN_MS
 
     # Only test the sufficient-time case
     if remaining_ms < threshold_ms:
@@ -183,27 +180,28 @@ def test_property7_research_proceeds_when_time_sufficient(
 def test_property7_default_config_threshold_is_330_seconds(
     remaining_ms: int,
 ):
-    """Property 7: With default config (300s timeout), threshold is 330,000ms.
+    """Property 7: With default config, the gate threshold is 120,000ms.
 
-    The default research_timeout_per_announcement is 300 seconds.
-    Combined with the 30,000ms safety margin, the threshold is 330,000ms.
-    This verifies the formula works correctly with the default configuration.
+    Fixed reservation (90,000ms) + safety margin (30,000ms) = 120,000ms,
+    independent of research_timeout_per_announcement — the per-item budget
+    is enforced by the in-loop deadline, not the gate.
+    (Amended by docs/audit-remediation-plan.md item 8; was 330,000ms.)
 
-    **Validates: Requirements 4.7, 4.8**
+    **Validates: Requirements 4.7, 4.8 (as amended)**
     """
     config = Config()
     agent = _make_agent(remaining_ms=remaining_ms, config=config)
 
-    expected_threshold = 300 * 1000 + 30_000  # 330,000 ms
+    expected_threshold = _GATE_RESERVATION_MS + _SAFETY_MARGIN_MS  # 120,000 ms
     has_time = agent._has_sufficient_time()
 
     if remaining_ms >= expected_threshold:
         assert has_time is True, (
             f"With default config, agent should proceed when "
-            f"remaining_ms={remaining_ms} >= 330,000ms"
+            f"remaining_ms={remaining_ms} >= 120,000ms"
         )
     else:
         assert has_time is False, (
             f"With default config, agent should skip when "
-            f"remaining_ms={remaining_ms} < 330,000ms"
+            f"remaining_ms={remaining_ms} < 120,000ms"
         )

@@ -54,6 +54,11 @@ node_modules/
 .aws/
 aws-exports.js
 
+# Local deployment configuration — never committed.
+# See README "Configuring Your Own Deployment". Copy cdk.context.json.example to start.
+cdk.context.json
+docs/*.local.md
+
 # Temporary files
 tmp/
 temp/

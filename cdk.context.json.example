@@ -1,0 +1,9 @@
+{
+  "_comment": "Copy this file to cdk.context.json (gitignored) and fill in your values. Every key is optional — a missing key falls back to a working generic default. See README: 'Configuring Your Own Deployment'.",
+
+  "custom_domain": "news.example.com",
+  "certificate_arn": "arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000",
+  "hosted_zone_id": "Z0123456789ABCDEFGHIJ",
+
+  "preferred_geography": "global"
+}

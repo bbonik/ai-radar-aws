@@ -1,0 +1,61 @@
+# CI for AI Radar AWS (docs/audit-remediation-plan.md item 19).
+# Three checks, deliberately minimal:
+#   1. Test suite (pytest incl. hypothesis property tests)
+#   2. Zero-config synth — the stack MUST synthesize with no cdk.context.json,
+#      guarding the fresh-clone path so personal configuration can never
+#      silently become mandatory (the failure mode item 0 cleaned up)
+#   3. Secret hygiene — deployment identifiers must never reappear in the tree
+# No deploy-on-merge by design: deployment touches a live site and a
+# production data bucket, and stays human-initiated.
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+          pip install aws-cdk-lib constructs
+          npm install -g aws-cdk
+
+      - name: Secret hygiene — no deployment identifiers in the tree
+        run: |
+          # The workflow itself carries these strings as the patterns to find
+          if git grep -nE "482414474587|Z05825673RBJYYG1X25I4|vonikakv" -- . ':!.github/workflows/ci.yml' ; then
+            echo "::error::Deployment identifiers found in tracked files (see plan item 9)"
+            exit 1
+          fi
+          echo "clean"
+
+      - name: Zero-config guard — no local cdk.context.json in CI
+        run: |
+          if [ -f cdk.context.json ]; then
+            echo "::error::cdk.context.json is committed — it must stay local-only"
+            exit 1
+          fi
+
+      - name: Tests
+        run: python -m pytest tests/ -q --tb=short
+
+      - name: Zero-config synth (fresh-clone path)
+        run: cdk synth AiRadarAwsStack --quiet
+        env:
+          # Synth must not require credentials or local context
+          CDK_DEFAULT_ACCOUNT: "111111111111"
+          CDK_DEFAULT_REGION: "us-east-1"

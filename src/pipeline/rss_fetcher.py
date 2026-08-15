@@ -8,7 +8,6 @@ import html
 import re
 import time
 import xml.etree.ElementTree as ET
-from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from src.config import Config

@@ -20,7 +20,8 @@ NC='\033[0m'
 
 FUNCTION_NAME="ai-radar-report-pipeline"
 LOG_GROUP="/aws/lambda/${FUNCTION_NAME}"
-REGION="us-east-1"
+# Region from the single source of truth (same pattern as deploy.sh)
+REGION=$(python3 -c "from src.config import Config; print(Config().aws_region)")
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}  AI Radar AWS — Pipeline Runner${NC}"
@@ -36,12 +37,24 @@ echo ""
 
 # Invoke synchronously — blocks until Lambda completes
 RESPONSE_FILE=$(mktemp)
-aws lambda invoke \
+INVOKE_ERR=$(mktemp)
+if ! aws lambda invoke \
     --function-name "$FUNCTION_NAME" \
     --invocation-type RequestResponse \
     --region "$REGION" \
     --cli-read-timeout 900 \
-    "$RESPONSE_FILE" > /dev/null 2>&1
+    "$RESPONSE_FILE" > /dev/null 2>"$INVOKE_ERR"; then
+    if grep -qi "TooManyRequests\|Rate exceeded\|429" "$INVOKE_ERR"; then
+        echo -e "${YELLOW}⚠  A pipeline run is already in progress (concurrency is capped at 1 to"
+        echo -e "   protect the data store from concurrent writes). Wait and retry.${NC}"
+    else
+        echo -e "${RED}✗ Lambda invocation failed:${NC}"
+        cat "$INVOKE_ERR"
+    fi
+    rm -f "$RESPONSE_FILE" "$INVOKE_ERR"
+    exit 1
+fi
+rm -f "$INVOKE_ERR"
 
 # Parse the Lambda response
 RESPONSE=$(cat "$RESPONSE_FILE")
@@ -122,7 +135,12 @@ for line in lines:
     
     msg = d.get('message', '')
     
-    if msg == 'RSS fetch complete':
+    if msg == 'Pipeline run started':
+        geo = d.get('preferred_geography', '?')
+        src = d.get('geography_source', '?')
+        print(f'  ⚙️  Geography preference: {geo}  (source: {src})')
+
+    elif msg == 'RSS fetch complete':
         count = d.get('total_fetched', '?')
         print(f'  📡 Fetched {count} items from RSS feed')
     

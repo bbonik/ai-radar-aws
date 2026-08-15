@@ -31,15 +31,58 @@ from aws_cdk import (
     aws_events_targets as targets,
     aws_iam as iam,
     aws_lambda as lambda_,
+    aws_cloudwatch_actions as cw_actions,
     aws_route53 as route53,
     aws_route53_targets as route53_targets,
     aws_s3 as s3,
+    aws_sns as sns,
+    aws_sns_subscriptions as sns_subscriptions,
     aws_wafv2 as wafv2,
     CfnResource,
 )
 from constructs import Construct
 
 from src.config import Config
+
+# Shared exclude list for Lambda asset bundling (single source — was duplicated
+# three times, which is how entries drifted). Two hard-learned rules:
+#   1. "cdk.out/**" does NOT match dot-directories like cdk.out/.cache, whose
+#      multi-GB zip caches recursively snowballed past Node's 2 GiB limit and
+#      broke deploys. Exclude the directory itself, not its contents.
+#   2. Never ship local artefacts or secrets: archives, backups, env files,
+#      keys, local context, or CSV data (runtime reads data from S3, never
+#      from the bundle). Plan: docs/audit-remediation-plan.md item 10.
+LAMBDA_ASSET_EXCLUDES = [
+    # VCS / caches / tooling
+    ".git",
+    ".hypothesis",
+    ".kiro",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".venv",
+    "cdk.out",
+    "node_modules",
+    "__pycache__",
+    "*.pyc",
+    ".DS_Store",
+    # Not needed at runtime
+    "tests",
+    "infrastructure",
+    "docs",
+    "scripts",
+    ".vscode",
+    # Local artefacts and secrets — never ship
+    "*.zip",
+    "backups",
+    ".env",
+    ".env.*",
+    "*.pem",
+    "*.key",
+    "*.pptx",
+    "*.csv",
+    "cdk.context.json",
+    "cdk.context.json.example",
+]
 
 
 class AiRadarAwsStack(Stack):
@@ -51,14 +94,18 @@ class AiRadarAwsStack(Stack):
         config = Config()
 
         # ─── S3 Data Bucket ───────────────────────────────────────────────
-        # Stores announcement CSV and error records
+        # Stores announcement CSV and error records — the only stateful,
+        # non-reproducible data in the system (every row contains paid-for
+        # LLM output). Versioned so a bad overwrite is recoverable, and
+        # RETAINed so `cdk destroy` cannot delete it as a side effect;
+        # deploy.sh --destroy offers explicit, separately-confirmed removal.
         self.data_bucket = s3.Bucket(
             self,
             "DataBucket",
             encryption=s3.BucketEncryption.S3_MANAGED,  # AES-256
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True,
+            versioned=True,
+            removal_policy=RemovalPolicy.RETAIN,
         )
 
         # ─── S3 Website Bucket ────────────────────────────────────────────
@@ -169,24 +216,7 @@ class AiRadarAwsStack(Stack):
             function_name="ai-radar-website-builder",
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="src.website_builder.handler.handler",
-            code=lambda_.Code.from_asset(
-                ".",
-                exclude=[
-                    ".git/*",
-                    ".hypothesis/*",
-                    ".kiro/*",
-                    ".pytest_cache/*",
-                    "tests/*",
-                    "infrastructure/*",
-                    "cdk.out/**",
-                    "node_modules/*",
-                    "__pycache__/*",
-                    "docs/*",
-                    "scripts/*",
-                    "*.pyc",
-                    ".venv/*",
-                ],
-            ),
+            code=lambda_.Code.from_asset(".", exclude=LAMBDA_ASSET_EXCLUDES),
             timeout=Duration.minutes(10),
             memory_size=1024,
             environment={
@@ -246,8 +276,36 @@ class AiRadarAwsStack(Stack):
             ],
         )
 
+        # ─── Analytics HTTP API (created early: its URL is pinned in CSP) ─
+        # The API resource itself is declared here so the response headers
+        # policy below can reference its exact hostname. Its CORS config,
+        # integration, route and stage are attached later in the analytics
+        # section (CORS references the distribution domain, which references
+        # this policy — declaring CORS here would be a dependency cycle).
+        self.analytics_api = apigwv2.CfnApi(
+            self,
+            "AnalyticsApi",
+            name="ai-radar-analytics-api",
+            protocol_type="HTTP",
+        )
+        analytics_api_host = (
+            f"{self.analytics_api.ref}.execute-api.{Aws.REGION}.amazonaws.com"
+        )
+
         # ─── CloudFront Response Headers Policy ───────────────────────────
         # Security headers: CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy
+        #
+        # CSP notes (docs/audit-remediation-plan.md item 11):
+        # - connect-src pins THIS deployment's API Gateway hostname; the old
+        #   wildcard *.execute-api.us-east-1.amazonaws.com authorised any AWS
+        #   customer's API as an exfiltration destination.
+        # - 'unsafe-inline'/'unsafe-eval' are required by the current setup:
+        #   Mermaid and Chart.js are initialised via inline <script> blocks
+        #   and Mermaid evaluates dynamically. Removing them would need the
+        #   inline init extracted to a served .js file plus hash/nonce-based
+        #   policy — deliberate, revisit if the page gains any user input.
+        # - cdnjs.cloudflare.com was removed: it served html2pdf.js, which
+        #   commit aeb6682 replaced with browser-native print.
         self.response_headers_policy = cloudfront.ResponseHeadersPolicy(
             self,
             "SecurityHeadersPolicy",
@@ -256,10 +314,10 @@ class AiRadarAwsStack(Stack):
                 content_security_policy=cloudfront.ResponseHeadersContentSecurityPolicy(
                     content_security_policy=(
                         "default-src 'self'; "
-                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
                         "style-src 'self' 'unsafe-inline'; "
                         "img-src 'self' data:; "
-                        "connect-src 'self' https://*.execute-api.us-east-1.amazonaws.com"
+                        f"connect-src 'self' https://{analytics_api_host}"
                     ),
                     override=True,
                 ),
@@ -318,7 +376,7 @@ class AiRadarAwsStack(Stack):
             hosted_zone = route53.HostedZone.from_hosted_zone_attributes(
                 self, "CustomDomainZone",
                 hosted_zone_id=hosted_zone_id,
-                zone_name=".".join(custom_domain.split(".")[1:]),  # e.g., "vonikakv.people.aws.dev"
+                zone_name=".".join(custom_domain.split(".")[1:]),  # parent zone, e.g. "example.com" for "news.example.com"
             )
             route53.ARecord(
                 self, "CustomDomainRecord",
@@ -342,26 +400,15 @@ class AiRadarAwsStack(Stack):
             function_name="ai-radar-report-pipeline",
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="src.pipeline.handler.handler",
-            code=lambda_.Code.from_asset(
-                ".",
-                exclude=[
-                    ".git/*",
-                    ".hypothesis/*",
-                    ".kiro/*",
-                    ".pytest_cache/*",
-                    "tests/*",
-                    "infrastructure/*",
-                    "cdk.out/**",
-                    "node_modules/*",
-                    "__pycache__/*",
-                    "docs/*",
-                    "scripts/*",
-                    "*.pyc",
-                    ".venv/*",
-                ],
-            ),
+            code=lambda_.Code.from_asset(".", exclude=LAMBDA_ASSET_EXCLUDES),
             timeout=Duration.minutes(15),
             memory_size=1024,
+            # Exactly one run at a time: the pipeline does read-modify-write
+            # on the CSV, so a manual run overlapping the scheduled one would
+            # silently lose the other's writes (last writer wins). A second
+            # invocation now fails fast with a throttle instead.
+            # Plan: docs/audit-remediation-plan.md item 4.
+            reserved_concurrent_executions=1,
             environment={
                 "DATA_BUCKET_NAME": self.data_bucket.bucket_name,
                 "WEBSITE_BUILDER_FUNCTION_NAME": self.website_builder_lambda.function_name,
@@ -376,6 +423,15 @@ class AiRadarAwsStack(Stack):
                 ).to_string(),
             },
         )
+
+        # Per-deployment runtime override (from gitignored cdk.context.json).
+        # Absent context → Config's generic default applies. See README:
+        # "Configuring Your Own Deployment".
+        preferred_geography = self.node.try_get_context("preferred_geography")
+        if preferred_geography:
+            self.report_pipeline_lambda.add_environment(
+                "PREFERRED_GEOGRAPHY", str(preferred_geography)
+            )
 
         # ─── EventBridge Rule ─────────────────────────────────────────────
         # Triggers Lambda 1 at the configured daily schedule
@@ -525,6 +581,35 @@ class AiRadarAwsStack(Stack):
             alarm_description="CloudFront receiving unusually high request volume (possible DDoS)",
         )
 
+        # ─── Alerting: SNS topic wired to every alarm ─────────────────────
+        # The topic and alarm wiring are ALWAYS created — a fresh clone gets
+        # alarms genuinely wired to a topic needing one manual subscription.
+        # The email subscription is added only when alert_email is set in the
+        # gitignored cdk.context.json (deploy.sh warns when it is not).
+        # Plan: docs/audit-remediation-plan.md item 2.
+        self.alert_topic = sns.Topic(
+            self,
+            "AlertTopic",
+            topic_name="ai-radar-alerts",
+            display_name="AI Radar AWS Alerts",
+        )
+
+        alert_email = self.node.try_get_context("alert_email")
+        if alert_email:
+            self.alert_topic.add_subscription(
+                sns_subscriptions.EmailSubscription(str(alert_email))
+            )
+
+        for alarm in (
+            self.lambda1_errors_alarm,
+            self.lambda1_timeout_alarm,
+            self.lambda1_duration_alarm,
+            self.lambda2_errors_alarm,
+            self.lambda2_timeout_alarm,
+            self.cloudfront_requests_alarm,
+        ):
+            alarm.add_alarm_action(cw_actions.SnsAction(self.alert_topic))
+
         # ─── Analytics Lambda (Event Collector) ────────────────────────────
         self.analytics_lambda = lambda_.Function(
             self,
@@ -532,28 +617,16 @@ class AiRadarAwsStack(Stack):
             function_name="ai-radar-analytics",
             runtime=lambda_.Runtime.PYTHON_3_11,
             handler="src.analytics.handler.handler",
-            code=lambda_.Code.from_asset(
-                ".",
-                exclude=[
-                    ".git/*",
-                    ".hypothesis/*",
-                    ".kiro/*",
-                    ".pytest_cache/*",
-                    "tests/*",
-                    "infrastructure/*",
-                    "cdk.out/**",
-                    "node_modules/*",
-                    "__pycache__/*",
-                    "docs/*",
-                    "scripts/*",
-                    "*.pyc",
-                    ".venv/*",
-                ],
-            ),
+            code=lambda_.Code.from_asset(".", exclude=LAMBDA_ASSET_EXCLUDES),
             timeout=Duration.seconds(10),
             memory_size=128,
             environment={
                 "LOGS_BUCKET_NAME": self.logs_bucket.bucket_name,
+                # Echoed as Access-Control-Allow-Origin (item 12); "*" when
+                # no custom domain is configured.
+                "ALLOWED_ORIGIN": (
+                    f"https://{custom_domain}" if custom_domain else "*"
+                ),
             },
         )
 
@@ -561,17 +634,20 @@ class AiRadarAwsStack(Stack):
         self.logs_bucket.grant_write(self.analytics_lambda)
 
         # ─── HTTP API Gateway (Analytics Events) ──────────────────────────
-        self.analytics_api = apigwv2.CfnApi(
-            self,
-            "AnalyticsApi",
-            name="ai-radar-analytics-api",
-            protocol_type="HTTP",
-            cors_configuration=apigwv2.CfnApi.CorsProperty(
-                allow_origins=[f"https://{self.distribution.distribution_domain_name}"]
-                + ([f"https://{custom_domain}"] if custom_domain else []),
-                allow_methods=["POST", "OPTIONS"],
-                allow_headers=["Content-Type"],
+        # The CfnApi resource is declared earlier (its hostname is pinned in
+        # the CSP connect-src). CORS must NOT reference the distribution's
+        # domain: policy→API→distribution→policy is a CloudFormation cycle.
+        # With a custom domain configured, that static value is the allowed
+        # origin (the canonical site URL). Without one, fall back to "*" —
+        # CORS is browser-side courtesy on an endpoint that is publicly
+        # writable by design; the real limits are stage throttling (item 12)
+        # and the handler's validation.
+        self.analytics_api.cors_configuration = apigwv2.CfnApi.CorsProperty(
+            allow_origins=(
+                [f"https://{custom_domain}"] if custom_domain else ["*"]
             ),
+            allow_methods=["POST", "OPTIONS"],
+            allow_headers=["Content-Type"],
         )
 
         # Auto-deploy stage with throttling (P1: rate limiting)
@@ -581,9 +657,14 @@ class AiRadarAwsStack(Stack):
             api_id=self.analytics_api.ref,
             stage_name="$default",
             auto_deploy=True,
+            # Throttling is the primary abuse control on this endpoint (WAF
+            # deferred — docs/audit-remediation-plan.md item 12, D5). 5 rps
+            # sustained is far above legitimate traffic for this site; the
+            # budget alarm (item 2) is the cost backstop and the 90-day
+            # lifecycle bounds storage.
             default_route_settings=apigwv2.CfnStage.RouteSettingsProperty(
-                throttling_burst_limit=100,
-                throttling_rate_limit=50,
+                throttling_burst_limit=20,
+                throttling_rate_limit=5,
             ),
         )
 
@@ -623,12 +704,37 @@ class AiRadarAwsStack(Stack):
         )
 
         # ─── AWS Budget (P2: Cost Anomaly Detection) ──────────────────────
-        # Alert if daily spend exceeds $20 (catches DDoS cost spikes)
+        # Alert if daily spend exceeds $20 (catches DDoS cost spikes).
+        # Without a NotificationsWithSubscribers block, AWS Budgets sends
+        # NOTHING — so the notification is attached whenever alert_email is
+        # configured. Plan: docs/audit-remediation-plan.md item 2.
+        budget_notifications = None
+        if alert_email:
+            budget_notifications = [
+                budgets.CfnBudget.NotificationWithSubscribersProperty(
+                    notification=budgets.CfnBudget.NotificationProperty(
+                        comparison_operator="GREATER_THAN",
+                        notification_type="ACTUAL",
+                        threshold=100,
+                        threshold_type="PERCENTAGE",
+                    ),
+                    subscribers=[
+                        budgets.CfnBudget.SubscriberProperty(
+                            subscription_type="EMAIL",
+                            address=str(alert_email),
+                        )
+                    ],
+                )
+            ]
+
+        # No explicit budget_name: NotificationsWithSubscribers is create-only,
+        # so any change replaces the budget — and a fixed name makes the
+        # replacement's create collide with the existing budget ("same name but
+        # a different internalId"). A generated name avoids that class forever.
         self.daily_budget = budgets.CfnBudget(
             self,
             "DailySpendBudget",
             budget=budgets.CfnBudget.BudgetDataProperty(
-                budget_name="AiRadar-DailySpend",
                 budget_type="COST",
                 time_unit="DAILY",
                 budget_limit=budgets.CfnBudget.SpendProperty(
@@ -636,6 +742,7 @@ class AiRadarAwsStack(Stack):
                     unit="USD",
                 ),
             ),
+            notifications_with_subscribers=budget_notifications,
         )
 
         # ─── Stack Outputs ────────────────────────────────────────────────

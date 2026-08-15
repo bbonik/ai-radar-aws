@@ -14,6 +14,7 @@ Features:
 """
 
 import csv
+import hashlib
 import html
 import io
 import json
@@ -195,13 +196,27 @@ def _text_to_bullet_html(text: str) -> str:
     return f"<ul>{items}</ul>"
 
 
+# Slug construction (docs/audit-remediation-plan.md item 6, decision D3).
+# The previous scheme slugified the WHOLE URL capped at 80 chars; the fixed
+# AWS boilerplate prefix consumed 48 of them, leaving 32 to disambiguate —
+# 55% of live slugs sat at the cap and 6 links collided onto 2 slugs,
+# making 4 report pages unreachable. Now: readable tail + short hash of the
+# full link, so uniqueness is structural rather than probabilistic.
+# Changing these values renames every report URL — see the plan before touching.
+SLUG_MAX_BASE = 150   # S3 keys allow 1024 bytes; longest current AWS segment ~85
+SLUG_HASH_LEN = 8     # 4.3bn values; collision odds at 243 links ~7e-15
+
+
 def _slug_from_link(link: str) -> str:
-    """Generate a URL-safe slug from an announcement link."""
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", link)
-    slug = slug.strip("-")
-    if len(slug) > 80:
-        slug = slug[:80].rstrip("-")
-    return slug
+    """Generate a URL-safe, collision-free slug from an announcement link.
+
+    Format: <last-path-segment>-<8-char-sha256-of-full-link>
+    e.g. amazon-sagemaker-unified-studio-terraform-3f9a1c04
+    """
+    tail = link.rstrip("/").rsplit("/", 1)[-1]
+    base = re.sub(r"[^a-zA-Z0-9]+", "-", tail).strip("-").lower()[:SLUG_MAX_BASE]
+    digest = hashlib.sha256(link.encode("utf-8")).hexdigest()[:SLUG_HASH_LEN]
+    return f"{base}-{digest}" if base else digest
 
 
 def _tag_css_class(tag: str, tags: "AnnouncementTags") -> str:
@@ -1782,7 +1797,7 @@ JS_TEMPLATE = """\
       if (time === 'week') count = weekCount;
       else if (time === 'month') count = monthCount;
       else if (time === '3months') count = threeMonthCount;
-      var label = btn.textContent.replace(/\s*\(\d+\)/, '');
+      var label = btn.textContent.replace(/\\s*\\(\\d+\\)/, '');
       btn.textContent = label + ' (' + count + ')';
     });
   }
@@ -2832,7 +2847,10 @@ REPORT_TEMPLATE = """\
 
   <script src="../assets/app.js"></script>
   <script>
-    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+    // securityLevel 'strict' sanitises label HTML. It is Mermaid 10's
+    // default, but the diagrams are LLM-generated, so the protection is
+    // pinned explicitly rather than relying on an upstream default.
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral', securityLevel: 'strict' });
   </script>
 </body>
 </html>

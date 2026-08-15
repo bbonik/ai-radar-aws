@@ -60,6 +60,20 @@ ERRORS_KEY = "errors/failed_announcements.csv"
 MAX_RETRIES = 3
 
 
+class CsvSchemaMismatchError(Exception):
+    """Raised when a row's fields do not match the stored CSV's header.
+
+    Schema evolution is deliberately NOT automatic (a past auto-migration
+    corrupted the CSV via quote doubling — commit 722eb25). When a model
+    field is added, the stored file must be migrated explicitly with a
+    one-time script before appends can resume. This error names exactly
+    which columns diverge so the failure is actionable instead of a bare
+    ValueError filed under stage 'unknown'.
+    """
+
+    pass
+
+
 class StorageManager:
     """Manages persistence of announcement data and error records to S3.
 
@@ -94,6 +108,16 @@ class StorageManager:
             )
             content = response["Body"].read().decode("utf-8")
             links = {line.strip() for line in content.split("\n") if line.strip()}
+
+            # Self-heal: a near-empty index alongside a substantial CSV means
+            # the index was damaged (e.g. by the historical swallowed-error
+            # bug in _append_link). Rebuild it from the CSV rather than
+            # reprocessing the entire feed at full Bedrock cost.
+            if len(links) < 10:
+                rebuilt = self._rebuild_index_if_damaged(links)
+                if rebuilt is not None:
+                    return rebuilt
+
             self._logger.info(
                 "Loaded existing links from links.txt",
                 links_count=len(links),
@@ -145,6 +169,52 @@ class StorageManager:
             )
             raise
 
+    def _rebuild_index_if_damaged(self, links: set[str]) -> set[str] | None:
+        """Rebuild links.txt from the CSV when the index looks damaged.
+
+        Called when the index holds suspiciously few links. If the CSV is
+        substantial (> 100 KB), the index cannot legitimately be that small:
+        rebuild it from the CSV (union with whatever the index still holds)
+        and persist. Returns the rebuilt set, or None when the CSV is absent
+        or small enough that the tiny index is plausible (fresh deployment).
+
+        Best-effort guard: if the CSV's size cannot be determined, do not
+        rebuild — load_existing_links proceeds with the index as-is.
+        """
+        try:
+            head = self._s3.head_object(
+                Bucket=self._data_bucket, Key=ANNOUNCEMENTS_KEY
+            )
+            csv_size = head["ContentLength"]
+        except Exception:
+            return None
+
+        if csv_size <= 100_000:
+            return None
+
+        self._logger.error(
+            "links.txt looks damaged: too few links for the CSV size — "
+            "rebuilding the dedup index from the CSV",
+            links_count=len(links),
+            csv_bytes=csv_size,
+        )
+
+        response = self._s3.get_object(
+            Bucket=self._data_bucket, Key=ANNOUNCEMENTS_KEY
+        )
+        csv_content = response["Body"].read().decode("utf-8")
+        reader = csv.DictReader(io.StringIO(csv_content))
+        rebuilt = {row["link"] for row in reader if row.get("link")}
+        rebuilt |= links
+
+        self._save_links_file(rebuilt)
+
+        self._logger.info(
+            "Dedup index rebuilt from CSV",
+            links_count=len(rebuilt),
+        )
+        return rebuilt
+
     def _save_links_file(self, links: set[str]) -> None:
         """Write the full links set to S3 as a text file (one URL per line)."""
         content = "\n".join(sorted(links))
@@ -157,7 +227,14 @@ class StorageManager:
         )
 
     def _append_link(self, link: str) -> None:
-        """Append a single link to the links.txt file."""
+        """Append a single link to the links.txt file.
+
+        Only a genuinely missing file is treated as empty. Any other read
+        error MUST propagate: swallowing a transient failure here (throttle,
+        timeout, 5xx) would replace the entire dedup index with a single
+        link, causing the next run to reprocess the whole feed at full
+        Bedrock cost and append duplicate CSV rows.
+        """
         try:
             # Read existing content
             response = self._s3.get_object(
@@ -165,8 +242,14 @@ class StorageManager:
                 Key=LINKS_KEY,
             )
             existing = response["Body"].read().decode("utf-8")
-        except (self._s3.exceptions.NoSuchKey, Exception):
+        except self._s3.exceptions.NoSuchKey:
             existing = ""
+        except Exception as exc:
+            error_code = getattr(exc, "response", {}).get("Error", {}).get("Code", "")
+            if error_code in ("NoSuchKey", "404"):
+                existing = ""
+            else:
+                raise
 
         # Append the new link
         if existing and not existing.endswith("\n"):
@@ -182,13 +265,29 @@ class StorageManager:
         )
 
     def save_announcement(self, announcement: ProcessedAnnouncement) -> bool:
-        """Append a new announcement row to the CSV in S3.
+        """Append a new announcement to storage: dedup index first, then CSV.
 
-        Downloads the existing CSV (if any), appends the new row, and uploads
-        the updated file. Never overwrites existing data — only appends.
+        The two writes cannot be atomic, so the order chooses the failure
+        mode. Index-first means a crash between the writes SKIPS the item on
+        future runs (invisible but recoverable: remove the link from
+        links.txt to re-queue it). CSV-first would DUPLICATE it, corrupting
+        the published site and analytics. The two writes retry independently
+        so a CSV retry can never re-append the link.
 
         Returns True on success, False on failure after all retries.
         """
+        # Step 1: record the link in the dedup index.
+        if not self._append_link_with_retry(announcement.link):
+            self._logger.error(
+                "Failed to record link in dedup index after all retries — "
+                "announcement not saved, will be retried next run",
+                max_retries=MAX_RETRIES,
+                announcement_link=announcement.link,
+                announcement_title=announcement.title,
+            )
+            return False
+
+        # Step 2: append the row to the CSV.
         csv_row = announcement.to_csv_row()
 
         for attempt in range(MAX_RETRIES + 1):
@@ -204,9 +303,6 @@ class StorageManager:
                 # Upload the updated CSV
                 self._upload_csv(ANNOUNCEMENTS_KEY, updated_content)
 
-                # Also append to the lightweight links file for fast dedup
-                self._append_link(announcement.link)
-
                 self._logger.info(
                     "Announcement saved to S3",
                     announcement_link=announcement.link,
@@ -216,7 +312,7 @@ class StorageManager:
 
             except Exception as exc:
                 self._logger.warning(
-                    "S3 write attempt failed for announcement",
+                    "S3 write attempt failed for announcement CSV",
                     attempt=attempt + 1,
                     max_retries=MAX_RETRIES,
                     error_type=type(exc).__name__,
@@ -227,12 +323,40 @@ class StorageManager:
                     backoff = 2**attempt  # 1s, 2s, 4s
                     time.sleep(backoff)
 
+        # The link IS in the index but the row is NOT in the CSV: dedup will
+        # skip this announcement on future runs. Log loudly with the exact
+        # manual remedy so it is recoverable rather than silently lost.
         self._logger.error(
-            "Failed to save announcement after all retries",
+            "CSV write failed AFTER link was recorded in the dedup index — "
+            "this announcement will be skipped on future runs. To re-queue "
+            "it, delete its line from database/links.txt",
             max_retries=MAX_RETRIES,
             announcement_link=announcement.link,
             announcement_title=announcement.title,
         )
+        return False
+
+    def _append_link_with_retry(self, link: str) -> bool:
+        """Append a link to the dedup index, retrying with backoff.
+
+        Returns True on success, False once all retries are exhausted.
+        """
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                self._append_link(link)
+                return True
+            except Exception as exc:
+                self._logger.warning(
+                    "S3 write attempt failed for links index",
+                    attempt=attempt + 1,
+                    max_retries=MAX_RETRIES,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                    announcement_link=link,
+                )
+                if attempt < MAX_RETRIES:
+                    backoff = 2**attempt  # 1s, 2s, 4s
+                    time.sleep(backoff)
         return False
 
     def save_error_record(self, error: AnnouncementError) -> bool:
@@ -332,6 +456,24 @@ class StorageManager:
             # Use csv.reader to properly parse the header (handles quotes)
             header_reader = csv.reader(io.StringIO(first_line))
             existing_columns = next(header_reader)
+
+            # Detect schema drift BEFORE writing. DictWriter would raise a
+            # bare ValueError for extra fields and silently write "" for
+            # missing ones — both wrong. Fail with an actionable message.
+            row_fields = set(row.keys())
+            header_fields = set(existing_columns)
+            if row_fields != header_fields:
+                extra = sorted(row_fields - header_fields)
+                missing = sorted(header_fields - row_fields)
+                raise CsvSchemaMismatchError(
+                    f"Row fields do not match the stored CSV header. "
+                    f"Fields not in header: {extra or 'none'}; "
+                    f"header columns absent from row: {missing or 'none'}. "
+                    f"The stored file must be migrated explicitly before "
+                    f"appends can resume — write a one-time migration script "
+                    f"(pattern: scripts/drop_aws_service_column.py) and run "
+                    f"it against s3://{self._data_bucket}/{ANNOUNCEMENTS_KEY}."
+                )
 
             # Append the new row using existing columns
             writer = csv.DictWriter(output, fieldnames=existing_columns)

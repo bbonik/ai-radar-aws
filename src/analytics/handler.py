@@ -7,6 +7,9 @@ Security hardening:
 - Validates event_type against an allowlist
 - Rejects payloads exceeding MAX_BODY_SIZE (1KB)
 - Filters out invalid events before writing to S3
+- Truncates client IPs at ingest (IPv4 /24, IPv6 /48) so 90-day raw
+  retention is not 90 days of device identifiers
+  (docs/audit-remediation-plan.md item 12, decision D6)
 """
 import json
 import os
@@ -18,6 +21,27 @@ import boto3
 # Security: maximum request body size (1KB)
 MAX_BODY_SIZE = 1024
 
+
+def truncate_ip(ip: str) -> str:
+    """De-identify a client IP at ingest.
+
+    IPv4 keeps the /24 (drops the host octet); IPv6 keeps the /48 (first
+    three hextets). Preserves geographic and coarse-uniqueness signal while
+    ceasing to store a per-device identifier. Anything unparseable is
+    replaced with "unknown" rather than stored raw.
+    """
+    if not ip or ip == "unknown":
+        return "unknown"
+    if ":" in ip:  # IPv6
+        parts = ip.split(":")
+        if len(parts) >= 3:
+            return ":".join(parts[:3]) + "::/48"
+        return "unknown"
+    parts = ip.split(".")
+    if len(parts) == 4:
+        return ".".join(parts[:3]) + ".0/24"
+    return "unknown"
+
 # Security: allowlist of valid event types
 VALID_EVENT_TYPES = frozenset({
     "pageview",
@@ -28,6 +52,21 @@ VALID_EVENT_TYPES = frozenset({
     "about_open",
     "sort_change",
 })
+
+
+def _cors_headers() -> dict:
+    """CORS response headers, honouring the deployment's configured origin.
+
+    ALLOWED_ORIGIN is set by the CDK stack from the custom_domain context;
+    absent configuration falls back to "*" (the endpoint is publicly
+    writable by design — throttling and validation are the controls).
+    Previously hardcoded "*", contradicting the API-level CORS config.
+    """
+    return {
+        "Access-Control-Allow-Origin": os.environ.get("ALLOWED_ORIGIN", "*"),
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+    }
 
 
 def handler(event, context):
@@ -52,9 +91,17 @@ def handler(event, context):
     # Enrich each event with server-side metadata
     now = datetime.now(timezone.utc)
     date_prefix = now.strftime("%Y-%m-%d")
-    source_ip = (
-        event.get("requestContext", {}).get("identity", {}).get("sourceIp", "unknown")
+    # HTTP API payload v2.0 carries the source IP at requestContext.http;
+    # the old read targeted the REST-API v1 shape (requestContext.identity),
+    # which does not exist here — so source_ip had been "unknown" on every
+    # event ever stored. v1 kept as fallback for local tests.
+    request_context = event.get("requestContext", {})
+    raw_ip = (
+        request_context.get("http", {}).get("sourceIp")
+        or request_context.get("identity", {}).get("sourceIp")
+        or "unknown"
     )
+    source_ip = truncate_ip(raw_ip)
     user_agent = event.get("headers", {}).get(
         "User-Agent", event.get("headers", {}).get("user-agent", "unknown")
     )
@@ -84,11 +131,7 @@ def handler(event, context):
     if not enriched_events:
         return {
             "statusCode": 200,
-            "headers": {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "POST, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type",
-            },
+            "headers": _cors_headers(),
             "body": json.dumps({"status": "ok", "events_recorded": 0}),
         }
 
@@ -112,10 +155,6 @@ def handler(event, context):
 
     return {
         "statusCode": 200,
-        "headers": {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type",
-        },
+        "headers": _cors_headers(),
         "body": json.dumps({"status": "ok", "events_recorded": len(enriched_events)}),
     }

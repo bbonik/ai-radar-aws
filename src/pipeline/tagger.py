@@ -353,15 +353,6 @@ class Tagger:
         return [tag for tag in tags if isinstance(tag, str) and tag in valid_set]
 
     @staticmethod
-    def _validate_geo(value) -> str:
-        """Validate geo_availability value (legacy single-value support)."""
-        if not isinstance(value, str):
-            return ""
-        if value in _VALID_GEO_AVAILABILITY:
-            return value
-        return ""
-
-    @staticmethod
     def _validate_geo_list(value) -> list[str]:
         """Validate geo_availability as a list of geographies."""
         if isinstance(value, str):

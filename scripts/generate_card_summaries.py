@@ -25,33 +25,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import boto3
 
+from scripts._common import find_stack_bucket, load_context_env
+
+load_context_env()
+
 from src.config import Config
 
 
 def get_data_bucket() -> str:
-    """Get the data bucket name from env or CloudFormation stack."""
-    bucket = os.environ.get("DATA_BUCKET_NAME")
-    if bucket:
-        return bucket
-
-    # Auto-detect from CloudFormation stack
-    cf = boto3.client("cloudformation", region_name="us-east-1")
-    try:
-        resources = cf.list_stack_resources(StackName="AiRadarAwsStack")
-        for r in resources["StackResourceSummaries"]:
-            if r["LogicalResourceId"] == "DataBucket" or "databucket" in r["PhysicalResourceId"].lower():
-                if r["ResourceType"] == "AWS::S3::Bucket":
-                    return r["PhysicalResourceId"]
-    except Exception:
-        pass
-
-    # Fallback: search for the bucket
-    s3 = boto3.client("s3")
-    for bucket_info in s3.list_buckets()["Buckets"]:
-        if "airadarawsstack" in bucket_info["Name"] and "data" in bucket_info["Name"]:
-            return bucket_info["Name"]
-
-    raise RuntimeError("Could not determine data bucket name. Set DATA_BUCKET_NAME env var.")
+    """Resolve the data bucket via the shared helper (region from Config)."""
+    return find_stack_bucket("DataBucket")
 
 
 def generate_card_summary(bedrock_client, model_id: str, title: str, whats_new: str) -> str:

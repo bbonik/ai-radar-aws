@@ -19,12 +19,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import boto3
 
-STACK_NAME = "AiRadarAwsStack"
+from scripts._common import STACK_NAME, deployed_region
+
+REGION = deployed_region()
 
 
 def get_bucket_names():
     """Get data and website bucket names from CloudFormation."""
-    cfn = boto3.client("cloudformation")
+    cfn = boto3.client("cloudformation", region_name=REGION)
     resources = cfn.list_stack_resources(StackName=STACK_NAME)
 
     data_bucket = ""
@@ -76,7 +78,7 @@ def main():
     if args.full:
         print(f"  Website bucket: {website_bucket}")
 
-    s3 = boto3.client("s3")
+    s3 = boto3.client("s3", region_name=REGION)
 
     # Create output directory
     os.makedirs(args.output, exist_ok=True)

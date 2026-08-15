@@ -14,10 +14,16 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import boto3
 
-LOG_GROUP = "/aws/lambda/ai-radar-report-pipeline"
-REGION = "us-east-1"
+from scripts._common import PIPELINE_LOG_GROUP as LOG_GROUP
+from scripts._common import deployed_region
+
+REGION = deployed_region()
 
 
 def main():

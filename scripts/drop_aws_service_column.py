@@ -21,7 +21,9 @@ import boto3
 
 csv.field_size_limit(sys.maxsize)
 
-STACK_NAME = "AiRadarAwsStack"
+from scripts._common import STACK_NAME, deployed_region
+
+REGION = deployed_region()
 CSV_KEY = "database/announcements.csv"
 COLUMN = "aws_service"
 
@@ -30,7 +32,7 @@ def _discover_data_bucket() -> str:
     bucket = os.environ.get("DATA_BUCKET_NAME", "")
     if bucket:
         return bucket
-    cfn = boto3.client("cloudformation")
+    cfn = boto3.client("cloudformation", region_name=REGION)
     resources = cfn.list_stack_resources(StackName=STACK_NAME)
     for r in resources.get("StackResourceSummaries", []):
         if (
@@ -48,7 +50,7 @@ def main():
         sys.exit(1)
 
     print(f"Data bucket: {data_bucket}")
-    s3 = boto3.client("s3")
+    s3 = boto3.client("s3", region_name=REGION)
 
     response = s3.get_object(Bucket=data_bucket, Key=CSV_KEY)
     content = response["Body"].read().decode("utf-8")

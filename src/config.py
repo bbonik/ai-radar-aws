@@ -6,9 +6,21 @@ Changes take effect on next Lambda execution without redeployment.
 
 No sensitive values (API keys, credentials) are stored in this file.
 All credentials come from IAM roles at runtime.
+
+Deployment-specific overrides:
+    Committed defaults are generic. Per-deployment values live in a gitignored
+    cdk.context.json (see README: "Configuring Your Own Deployment"). The CDK
+    stack injects them into the Lambdas as environment variables, which
+    __post_init__ applies over the defaults. Currently the only such value is
+    PREFERRED_GEOGRAPHY. Note: an environment override wins even over a value
+    passed explicitly to the constructor.
 """
 
+import os
 from dataclasses import dataclass, field
+
+# Valid values for preferred_geography / PREFERRED_GEOGRAPHY
+VALID_GEOGRAPHIES = ("apj", "emea", "americas", "global")
 
 
 @dataclass
@@ -74,9 +86,15 @@ class Config:
     # Instance/notebook announcement penalty
     instance_announcement_penalty: float = -2.0  # Demotes instance type/notebook announcements
 
-    # Geographic preference for region-expansion scoring
-    # Set to your geography: "apj", "emea", "americas", or "global" (no bias)
-    preferred_geography: str = "apj"
+    # Geographic preference for region-expansion scoring.
+    # "global" = no geographic bias, no badges — the neutral default for a
+    # fresh clone. Set YOUR deployment's preference ("apj", "emea",
+    # "americas") in the gitignored cdk.context.json, not here: this file is
+    # the generic default set for every deployment of the project.
+    # (docs/audit-remediation-plan.md item 20 — a personal preference used
+    # to ship here as the project default, silently applying a ±2.5-point
+    # scoring swing for everyone.)
+    preferred_geography: str = "global"
     region_expansion_bonus_local: float = 1.0     # Bonus when expansion includes your geography
     region_expansion_penalty_remote: float = -1.5  # Penalty when expansion is ONLY in other geographies
 
@@ -323,3 +341,24 @@ Return a JSON object with exactly these keys:
     # Lambda 2
     website_builder_function_name: str = "ai-radar-website-builder"
     website_builder_timeout: int = 600  # 10 minutes in seconds
+
+    def __post_init__(self) -> None:
+        """Apply per-deployment environment overrides (see module docstring).
+
+        Also records WHERE the effective value came from in
+        ``geography_source``, so the resolution is observable (logged at the
+        start of every pipeline run) instead of requiring the reader to know
+        the layering. Precedence is strict: the env var, when present,
+        always wins over the dataclass default above.
+        """
+        self.geography_source = "config.py default"
+        geo = os.environ.get("PREFERRED_GEOGRAPHY")
+        if geo is not None:
+            geo_normalized = geo.strip().lower()
+            if geo_normalized not in VALID_GEOGRAPHIES:
+                raise ValueError(
+                    f"Invalid PREFERRED_GEOGRAPHY value {geo!r}: "
+                    f"must be one of {', '.join(VALID_GEOGRAPHIES)}"
+                )
+            self.preferred_geography = geo_normalized
+            self.geography_source = "PREFERRED_GEOGRAPHY env var (from cdk.context.json)"

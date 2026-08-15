@@ -14,6 +14,7 @@ from moto import mock_aws
 
 from src.config import Config
 from src.pipeline.storage_manager import (
+    CsvSchemaMismatchError,
     ANNOUNCEMENT_CSV_COLUMNS,
     ANNOUNCEMENTS_KEY,
     ERROR_CSV_COLUMNS,
@@ -498,3 +499,255 @@ class TestSaveErrorRecord:
         assert result is True
         assert mock_s3.put_object.call_count == 2
         mock_sleep.assert_called_once_with(1)
+
+
+# --- Item 3: links-index write path (docs/audit-remediation-plan.md) ---
+
+
+def _throttling_error(operation: str) -> ClientError:
+    return ClientError(
+        {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
+        operation,
+    )
+
+
+class TestAppendLinkErrorHandling:
+    """A transient read error must never blank the dedup index."""
+
+    def _manager_with_mock_s3(self, config, logger):
+        mock_s3 = MagicMock()
+        # Modeled exceptions must be real exception classes for except clauses
+        mock_s3.exceptions.NoSuchKey = type("NoSuchKey", (Exception,), {})
+        return StorageManager(config, mock_s3, logger, TEST_BUCKET), mock_s3
+
+    def test_transient_read_error_propagates_and_never_writes(self, config, logger):
+        """Throttling on get_object must raise — NOT be treated as an empty file."""
+        manager, mock_s3 = self._manager_with_mock_s3(config, logger)
+        mock_s3.get_object.side_effect = _throttling_error("GetObject")
+
+        with pytest.raises(ClientError):
+            manager._append_link("https://example.com/announcement")
+
+        # The catastrophic historical behaviour: put_object replacing the
+        # whole index with one link. Must not happen.
+        mock_s3.put_object.assert_not_called()
+
+    def test_missing_file_creates_index_with_one_link(self, config, logger):
+        manager, mock_s3 = self._manager_with_mock_s3(config, logger)
+        mock_s3.get_object.side_effect = mock_s3.exceptions.NoSuchKey()
+
+        manager._append_link("https://example.com/announcement")
+
+        body = mock_s3.put_object.call_args.kwargs["Body"].decode("utf-8")
+        assert body == "https://example.com/announcement\n"
+
+    def test_client_error_404_treated_as_missing(self, config, logger):
+        manager, mock_s3 = self._manager_with_mock_s3(config, logger)
+        mock_s3.get_object.side_effect = ClientError(
+            {"Error": {"Code": "NoSuchKey", "Message": "not found"}}, "GetObject"
+        )
+
+        manager._append_link("https://example.com/announcement")
+        mock_s3.put_object.assert_called_once()
+
+
+class TestSaveAnnouncementWriteOrder:
+    """Index first, then CSV; failures produce a skip, never a duplicate."""
+
+    def _manager_with_mock_s3(self, config, logger):
+        mock_s3 = MagicMock()
+        mock_s3.exceptions.NoSuchKey = type("NoSuchKey", (Exception,), {})
+        # Empty bucket state: all reads miss
+        mock_s3.get_object.side_effect = mock_s3.exceptions.NoSuchKey()
+        mock_s3.head_object.side_effect = mock_s3.exceptions.NoSuchKey()
+        return StorageManager(config, mock_s3, logger, TEST_BUCKET), mock_s3
+
+    def test_link_index_written_before_csv(self, config, logger, sample_announcement):
+        manager, mock_s3 = self._manager_with_mock_s3(config, logger)
+
+        assert manager.save_announcement(sample_announcement) is True
+
+        keys_in_order = [
+            call.kwargs["Key"] for call in mock_s3.put_object.call_args_list
+        ]
+        assert keys_in_order == ["database/links.txt", ANNOUNCEMENTS_KEY]
+
+    @patch("src.pipeline.storage_manager.time.sleep")
+    def test_index_write_failure_means_no_csv_row(
+        self, _sleep, config, logger, sample_announcement
+    ):
+        """If the index cannot be written, zero CSV writes occur — the item
+        is retried next run instead of risking divergence."""
+        manager, mock_s3 = self._manager_with_mock_s3(config, logger)
+        mock_s3.put_object.side_effect = _throttling_error("PutObject")
+
+        assert manager.save_announcement(sample_announcement) is False
+
+        csv_writes = [
+            call for call in mock_s3.put_object.call_args_list
+            if call.kwargs["Key"] == ANNOUNCEMENTS_KEY
+        ]
+        assert csv_writes == []
+
+    @patch("src.pipeline.storage_manager.time.sleep")
+    def test_csv_failure_after_link_recorded_logs_remedy(
+        self, _sleep, config, logger, sample_announcement, capsys
+    ):
+        """CSV failing after the index write must log the manual re-queue path."""
+        manager, mock_s3 = self._manager_with_mock_s3(config, logger)
+
+        def put_object(**kwargs):
+            if kwargs["Key"] == ANNOUNCEMENTS_KEY:
+                raise _throttling_error("PutObject")
+            return {}
+
+        mock_s3.put_object.side_effect = put_object
+
+        assert manager.save_announcement(sample_announcement) is False
+
+        log_output = capsys.readouterr().out
+        assert "links.txt" in log_output
+        assert sample_announcement.link in log_output
+
+    @patch("src.pipeline.storage_manager.time.sleep")
+    def test_csv_retry_never_reappends_link(
+        self, _sleep, config, logger, sample_announcement
+    ):
+        """CSV retries must not touch the links index again (historical
+        duplicate-row bug: the old retry loop wrapped both writes)."""
+        manager, mock_s3 = self._manager_with_mock_s3(config, logger)
+
+        csv_attempts = {"count": 0}
+
+        def put_object(**kwargs):
+            if kwargs["Key"] == ANNOUNCEMENTS_KEY:
+                csv_attempts["count"] += 1
+                if csv_attempts["count"] == 1:
+                    raise _throttling_error("PutObject")
+            return {}
+
+        mock_s3.put_object.side_effect = put_object
+
+        assert manager.save_announcement(sample_announcement) is True
+
+        link_writes = [
+            call for call in mock_s3.put_object.call_args_list
+            if call.kwargs["Key"] == "database/links.txt"
+        ]
+        assert len(link_writes) == 1
+
+
+class TestDamagedIndexSelfHeal:
+    """A near-empty index next to a substantial CSV is rebuilt, not trusted."""
+
+    def _big_csv(self, n_rows: int = 300) -> str:
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=ANNOUNCEMENT_CSV_COLUMNS)
+        writer.writeheader()
+        for i in range(n_rows):
+            row = {col: f"filler-{i}-" + "x" * 20 for col in ANNOUNCEMENT_CSV_COLUMNS}
+            row["link"] = f"https://aws.amazon.com/whats-new/{i}"
+            writer.writerow(row)
+        return output.getvalue()
+
+    def test_damaged_index_rebuilt_from_csv(self, config, s3_client, logger):
+        csv_content = self._big_csv()
+        assert len(csv_content) > 100_000  # must trip the size guard
+        s3_client.put_object(
+            Bucket=TEST_BUCKET, Key=ANNOUNCEMENTS_KEY, Body=csv_content.encode()
+        )
+        # Damaged index: 2 links where the CSV holds 300
+        s3_client.put_object(
+            Bucket=TEST_BUCKET,
+            Key="database/links.txt",
+            Body=b"https://aws.amazon.com/whats-new/0\nhttps://example.com/only-in-index\n",
+        )
+        manager = StorageManager(config, s3_client, logger, TEST_BUCKET)
+
+        links = manager.load_existing_links()
+
+        assert len(links) == 301  # 300 from CSV + 1 unique to the index
+        assert "https://example.com/only-in-index" in links
+        # And the rebuilt index was persisted
+        stored = s3_client.get_object(Bucket=TEST_BUCKET, Key="database/links.txt")
+        assert len(stored["Body"].read().decode().strip().split("\n")) == 301
+
+    def test_small_index_with_small_csv_is_trusted(self, config, s3_client, logger):
+        """Fresh deployment: few links, small CSV — no rebuild."""
+        s3_client.put_object(
+            Bucket=TEST_BUCKET, Key=ANNOUNCEMENTS_KEY, Body=b"link\nhttps://a.example\n"
+        )
+        s3_client.put_object(
+            Bucket=TEST_BUCKET,
+            Key="database/links.txt",
+            Body=b"https://a.example\nhttps://b.example\n",
+        )
+        manager = StorageManager(config, s3_client, logger, TEST_BUCKET)
+
+        links = manager.load_existing_links()
+        assert links == {"https://a.example", "https://b.example"}
+
+
+# --- Item 5: CSV schema drift fails loudly (docs/audit-remediation-plan.md) ---
+
+
+class TestCsvSchemaMismatch:
+    """Schema drift must raise an actionable error, never a bare ValueError
+    (extra fields) or a silent empty cell (missing fields)."""
+
+    @pytest.fixture
+    def manager(self, config, s3_client, logger):
+        return StorageManager(config, s3_client, logger, TEST_BUCKET)
+
+    def _csv_with_columns(self, columns: list[str]) -> str:
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=columns)
+        writer.writeheader()
+        writer.writerow({c: "value" for c in columns})
+        return output.getvalue()
+
+    def test_row_with_extra_field_raises_named_error(self, manager):
+        """New model field, old stored header → error names the new column."""
+        existing = self._csv_with_columns(["title", "link"])
+        row = {"title": "t", "link": "l", "brand_new_field": "x"}
+
+        with pytest.raises(CsvSchemaMismatchError) as exc_info:
+            manager._append_row_to_csv(existing, row, ["title", "link", "brand_new_field"])
+
+        message = str(exc_info.value)
+        assert "brand_new_field" in message
+        assert "migration" in message
+
+    def test_header_with_extra_column_raises_named_error(self, manager):
+        """Migrated header, old code's row → previously a silent empty cell."""
+        existing = self._csv_with_columns(["title", "link", "migrated_column"])
+        row = {"title": "t", "link": "l"}
+
+        with pytest.raises(CsvSchemaMismatchError) as exc_info:
+            manager._append_row_to_csv(existing, row, ["title", "link"])
+
+        assert "migrated_column" in str(exc_info.value)
+
+    def test_matching_schema_appends_normally(self, manager):
+        existing = self._csv_with_columns(["title", "link"])
+        row = {"title": "t2", "link": "l2"}
+
+        result = manager._append_row_to_csv(existing, row, ["title", "link"])
+
+        rows = list(csv.DictReader(io.StringIO(result)))
+        assert len(rows) == 2
+        assert rows[1] == row
+
+    def test_new_file_uses_canonical_columns(self, manager, sample_announcement):
+        result = manager._append_row_to_csv(
+            "", sample_announcement.to_csv_row(), ANNOUNCEMENT_CSV_COLUMNS
+        )
+        header = result.split("\n", 1)[0]
+        assert header.split(",")[0] == "title"
+
+    def test_current_model_matches_live_schema(self, manager, sample_announcement):
+        """Guard: ProcessedAnnouncement.to_csv_row() must line up with the
+        canonical column list, or every production append would now raise."""
+        assert set(sample_announcement.to_csv_row().keys()) == set(
+            ANNOUNCEMENT_CSV_COLUMNS
+        )

@@ -75,7 +75,15 @@ class PipelineOrchestrator:
         announcements are recorded to the error file for retry/investigation.
         """
         start_time = datetime.now(timezone.utc)
-        self._logger.info("Pipeline run started", run_id=self._run_id)
+        # Effective config is stated up front so "what is this deployment
+        # actually running?" is the first log line of every run, never
+        # archaeology across config layers.
+        self._logger.info(
+            "Pipeline run started",
+            run_id=self._run_id,
+            preferred_geography=self._config.preferred_geography,
+            geography_source=self._config.geography_source,
+        )
 
         # Stage 1: Fetch RSS feed
         all_items = self._rss_fetcher.fetch()
@@ -163,11 +171,19 @@ class PipelineOrchestrator:
         """
         research_skipped = False
 
+        # Explicit stage tracking: updated before each stage so the generic
+        # except below records where the failure actually happened. Replaces
+        # guessing the stage from exception-message substrings, which filed
+        # errors under the wrong stage whenever a message happened to contain
+        # a keyword (docs/audit-remediation-plan.md item 15).
+        stage = "tagging"
+
         try:
             # Stage 4: Tag (non-fatal — empty tags on failure)
             tags = self._tagger.tag(item)
 
             # Stage 5: Classify importance (uses tags for bonus scoring)
+            stage = "classification"
             star_level, score = self._importance_classifier.classify(item, tags)
 
             # Stage 5b: Compute geographic relevance for card badge
@@ -176,17 +192,21 @@ class PipelineOrchestrator:
             geo_relevance = self._resolve_geo_relevance(item, tags)
 
             # Stage 6: Research
+            stage = "research"
             research_context = self._research_agent.research(item)
             if research_context.skipped:
                 research_skipped = True
 
             # Stage 7: Generate report
+            stage = "report_generation"
             report = self._report_generator.generate(item, research_context)
 
             # Stage 8: Generate graph (only for 2-star and 3-star)
+            stage = "graph_generation"
             mermaid_graph = self._graph_generator.generate(item, report, star_level, research_context)
 
             # Stage 9: Store the processed announcement
+            stage = "storage"
             processed = ProcessedAnnouncement(
                 title=item.title,
                 description=item.description,
@@ -233,8 +253,6 @@ class PipelineOrchestrator:
             })
 
         except Exception as exc:
-            # Determine the stage based on what we know
-            stage = self._determine_failure_stage(exc)
             self._record_failure(item, stage, type(exc).__name__, str(exc))
             return (False, research_skipped, {
                 "link": item.link,
@@ -378,20 +396,3 @@ class PipelineOrchestrator:
             cleaned.append(url)
 
         return cleaned
-
-    @staticmethod
-    def _determine_failure_stage(exc: Exception) -> str:
-        """Best-effort determination of which stage failed based on exception type."""
-        exc_name = type(exc).__name__
-        exc_msg = str(exc).lower()
-
-        if "report" in exc_msg or "generation" in exc_msg:
-            return "report_generation"
-        if "graph" in exc_msg or "mermaid" in exc_msg:
-            return "graph_generation"
-        if "s3" in exc_msg or "storage" in exc_msg or "bucket" in exc_msg:
-            return "storage"
-        if "research" in exc_msg or "fetch" in exc_msg or "url" in exc_msg:
-            return "research"
-
-        return "unknown"

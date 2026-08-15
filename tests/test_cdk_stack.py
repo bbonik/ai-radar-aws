@@ -128,23 +128,23 @@ class TestLambdaConfiguration:
             },
         )
 
-    def test_lambda1_memory_512mb(self, template):
-        """Lambda 1 should have 512MB memory."""
+    def test_lambda1_memory_1024mb(self, template):
+        """Lambda 1 should have 1024MB memory (raised from 512 after OOM with large CSV)."""
         template.has_resource_properties(
             "AWS::Lambda::Function",
             {
                 "FunctionName": "ai-radar-report-pipeline",
-                "MemorySize": 512,
+                "MemorySize": 1024,
             },
         )
 
-    def test_lambda2_memory_512mb(self, template):
-        """Lambda 2 should have 512MB memory."""
+    def test_lambda2_memory_1024mb(self, template):
+        """Lambda 2 should have 1024MB memory (matches stack; raised alongside Lambda 1)."""
         template.has_resource_properties(
             "AWS::Lambda::Function",
             {
                 "FunctionName": "ai-radar-website-builder",
-                "MemorySize": 512,
+                "MemorySize": 1024,
             },
         )
 
@@ -415,3 +415,190 @@ class TestEventBridgeSchedule:
                 "Targets": assertions.Match.any_value(),
             },
         )
+
+
+class TestDeploymentContextInjection:
+    """Per-deployment context flows into Lambda env vars; absence degrades cleanly."""
+
+    def test_preferred_geography_injected_when_context_set(self):
+        app = cdk.App(context={"preferred_geography": "apj"})
+        stack = AiRadarAwsStack(
+            app, "CtxTestStack", env=cdk.Environment(region=Config().aws_region)
+        )
+        template = assertions.Template.from_stack(stack)
+        template.has_resource_properties(
+            "AWS::Lambda::Function",
+            {
+                "FunctionName": "ai-radar-report-pipeline",
+                "Environment": {
+                    "Variables": assertions.Match.object_like(
+                        {"PREFERRED_GEOGRAPHY": "apj"}
+                    )
+                },
+            },
+        )
+
+    def test_no_context_synthesizes_without_geography_env(self):
+        """The fresh-clone path: no cdk.context.json, no override, still synthesizes."""
+        app = cdk.App()
+        stack = AiRadarAwsStack(
+            app, "NoCtxTestStack", env=cdk.Environment(region=Config().aws_region)
+        )
+        template = assertions.Template.from_stack(stack)
+        functions = template.find_resources(
+            "AWS::Lambda::Function",
+            {"Properties": {"FunctionName": "ai-radar-report-pipeline"}},
+        )
+        assert len(functions) == 1
+        env_vars = list(functions.values())[0]["Properties"]["Environment"]["Variables"]
+        assert "PREFERRED_GEOGRAPHY" not in env_vars
+
+
+class TestDataBucketProtection:
+    """The data bucket holds the only non-reproducible data; it must survive mistakes.
+
+    Plan: docs/audit-remediation-plan.md item 1.
+    """
+
+    def test_data_bucket_is_versioned_and_retained(self, template):
+        """Exactly one bucket is versioned + retained — the data bucket."""
+        buckets = template.find_resources("AWS::S3::Bucket")
+        protected = [
+            (logical_id, res)
+            for logical_id, res in buckets.items()
+            if res["Properties"].get("VersioningConfiguration", {}).get("Status")
+            == "Enabled"
+        ]
+        assert len(protected) == 1, "exactly one bucket should be versioned"
+        logical_id, resource = protected[0]
+        assert logical_id.startswith("DataBucket")
+        assert resource.get("DeletionPolicy") == "Retain"
+        assert resource.get("UpdateReplacePolicy") == "Retain"
+
+    def test_website_and_logs_buckets_remain_disposable(self, template):
+        """Reproducible buckets keep Delete so `cdk destroy` stays clean for cloners."""
+        buckets = template.find_resources("AWS::S3::Bucket")
+        disposable = [
+            logical_id
+            for logical_id, res in buckets.items()
+            if res.get("DeletionPolicy") == "Delete"
+        ]
+        assert any(l.startswith("WebsiteBucket") for l in disposable)
+        assert any(l.startswith("LogsBucket") for l in disposable)
+
+
+class TestAlarmNotifications:
+    """Every alarm publishes to the alert topic; subscription follows local config.
+
+    Plan: docs/audit-remediation-plan.md item 2.
+    """
+
+    def test_alert_topic_created(self, template):
+        template.resource_count_is("AWS::SNS::Topic", 1)
+        template.has_resource_properties(
+            "AWS::SNS::Topic", {"TopicName": "ai-radar-alerts"}
+        )
+
+    def test_every_alarm_has_an_action(self, template):
+        """No alarm may transition to ALARM silently."""
+        alarms = template.find_resources("AWS::CloudWatch::Alarm")
+        assert len(alarms) == 6
+        for logical_id, resource in alarms.items():
+            actions = resource["Properties"].get("AlarmActions", [])
+            assert len(actions) >= 1, f"{logical_id} has no alarm action"
+
+    def test_no_email_context_means_no_subscription(self, template):
+        """Fresh-clone path: topic wired, nobody subscribed, still synthesizes."""
+        template.resource_count_is("AWS::SNS::Subscription", 0)
+
+    def test_email_context_creates_subscription_and_budget_notification(self):
+        app = cdk.App(context={"alert_email": "ops@example.com"})
+        stack = AiRadarAwsStack(
+            app, "EmailCtxStack", env=cdk.Environment(region=Config().aws_region)
+        )
+        template = assertions.Template.from_stack(stack)
+        template.has_resource_properties(
+            "AWS::SNS::Subscription",
+            {"Protocol": "email", "Endpoint": "ops@example.com"},
+        )
+        template.has_resource_properties(
+            "AWS::Budgets::Budget",
+            {
+                "NotificationsWithSubscribers": [
+                    assertions.Match.object_like(
+                        {
+                            "Subscribers": [
+                                {
+                                    "SubscriptionType": "EMAIL",
+                                    "Address": "ops@example.com",
+                                }
+                            ]
+                        }
+                    )
+                ]
+            },
+        )
+
+    def test_no_email_context_means_budget_has_no_notifications(self, template):
+        budget = list(
+            template.find_resources("AWS::Budgets::Budget").values()
+        )[0]
+        assert "NotificationsWithSubscribers" not in budget["Properties"]
+
+
+class TestPipelineConcurrency:
+    """The pipeline does read-modify-write on the CSV; runs must serialise.
+
+    Plan: docs/audit-remediation-plan.md item 4.
+    """
+
+    def test_pipeline_lambda_reserved_concurrency_is_one(self, template):
+        template.has_resource_properties(
+            "AWS::Lambda::Function",
+            {
+                "FunctionName": "ai-radar-report-pipeline",
+                "ReservedConcurrentExecutions": 1,
+            },
+        )
+
+    def test_website_builder_has_no_concurrency_cap(self, template):
+        """The builder is idempotent from CSV — concurrent builds waste effort
+        but cannot corrupt state, so no cap."""
+        builder = [
+            res
+            for res in template.find_resources("AWS::Lambda::Function").values()
+            if res["Properties"].get("FunctionName") == "ai-radar-website-builder"
+        ][0]
+        assert "ReservedConcurrentExecutions" not in builder["Properties"]
+
+
+class TestContentSecurityPolicy:
+    """CSP pins the deployment's own API; no stale or wildcard grants.
+
+    Plan: docs/audit-remediation-plan.md item 11.
+    """
+
+    def _csp(self, template) -> str:
+        policy = list(
+            template.find_resources("AWS::CloudFront::ResponseHeadersPolicy").values()
+        )[0]
+        csp = policy["Properties"]["ResponseHeadersPolicyConfig"][
+            "SecurityHeadersConfig"
+        ]["ContentSecurityPolicy"]["ContentSecurityPolicy"]
+        # The value is an Fn::Join over the API ref; flatten for assertions
+        if isinstance(csp, dict):
+            parts = csp.get("Fn::Join", [None, []])[1]
+            csp = "".join(p if isinstance(p, str) else "<REF>" for p in parts)
+        return csp
+
+    def test_connect_src_pins_own_api_not_wildcard(self, template):
+        csp = self._csp(template)
+        assert "*.execute-api" not in csp, "wildcard authorises any AWS customer's API"
+        assert "<REF>.execute-api." in csp, "must reference this stack's own API id"
+
+    def test_stale_cdnjs_grant_removed(self, template):
+        """cdnjs served html2pdf.js, replaced by native print in aeb6682."""
+        assert "cdnjs.cloudflare.com" not in self._csp(template)
+
+    def test_jsdelivr_retained_for_mermaid_and_chartjs(self, template):
+        assert "https://cdn.jsdelivr.net" in self._csp(template)
