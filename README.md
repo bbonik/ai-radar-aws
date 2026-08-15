@@ -20,7 +20,7 @@
 Automated AWS AI/ML/GenAI news curation platform. Fetches the [AWS "What's New" RSS feed](https://aws.amazon.com/new/) daily, filters for AI relevance, classifies importance, assigns taxonomy tags, generates LLM-powered reports with Mermaid diagrams via Amazon Bedrock, and publishes a static website via CloudFront.
 
 <p align="center">
-  <img src="images/screenshot1.png" alt="AI Radar AWS - Main Page" width="700">
+  <img src="images/screenshot2.png" alt="AI Radar AWS - Main Page" width="700">
 </p>
 
 <p align="center">
