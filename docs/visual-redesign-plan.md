@@ -397,6 +397,24 @@ exactly the redundancy V2 was designed to provide. Two amendments applied:
 
 Also: the print "?" (8a) is confirmed minor/external — owner deprioritised.
 
+# Post-redesign finding: dead "View original announcement" links (2026-08-14)
+
+During final review the owner found some report source links 404. Investigated:
+**upstream AWS feed bug, not ours.** 5 of 252 stored links are broken — all
+Amazon Quick items from 2026-08 — published malformed in AWS's own RSS feed
+(missing `/about-aws` or the whole path prefix), and the live feed still emits
+them. No corrected URL exists anywhere (canonical forms, month variants, and
+product subpaths all 404; the pages were never published — third-party sites
+link to the same dead URLs).
+
+**Decision: no data edit.** The link is the row's identity (dedup key + slug),
+no working replacement exists to point at, and rewriting would create a
+duplicate-ingestion trap if AWS later corrects the feed. If AWS publishes the
+pages, the links heal themselves; if AWS corrects the feed instead, the
+corrected links will ingest as new items and the 5 stale rows get a manual
+cleanup. An ingest-time malformed-link warning was offered and declined
+(owner: not needed).
+
 # Owner decisions (2026-08-14)
 
 1. V2: importance label on **all** cards.
