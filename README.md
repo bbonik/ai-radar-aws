@@ -51,8 +51,11 @@ graph TB
         L2 --> WEB[("S3 Website Bucket<br/>static files")]
     end
 
-    WEB --> CF["CloudFront + WAF<br/>TLS 1.2+ · security headers"]
-    CF --> U(("Users"))
+    subgraph delivery["Delivery"]
+        U(("Users")) --> WAF["AWS WAF<br/>rate limiting · managed rules"]
+        WAF --> CF["CloudFront<br/>TLS 1.2+ · security headers"]
+        CF -- "origin fetch (OAC)" --> WEB
+    end
 
     subgraph analytics["Analytics & permanent history"]
         U -- "browser events" --> API["API Gateway<br/>POST /events · throttled"]
