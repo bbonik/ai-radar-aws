@@ -34,47 +34,42 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the [AWS "What's New" 
 - **Research-backed** — follows blog post links and reads documentation for deeper context
 - **5-star importance scoring** — point-based system with an optional geographic preference
 - **Geographic relevance** — opt-in badges show whether announcements are available in your region
+- **Permanent analytics history** — monthly rollups preserve aggregate usage stats beyond the 90-day raw-log window, without retaining personal data
 - **One-command deploy** — `./deploy.sh` sets up the entire stack from scratch
 
 ## 🏗️ Architecture
 
-```
-                                    ┌─────────────────────────────────────┐
-                                    │         Amazon Bedrock              │
-                                    │  Sonnet 4.6 │ Opus 4.6 │ Haiku 4.5  │
-                                    └──────────────────┬──────────────────┘
-                                                       │
-┌──────────────┐     ┌─────────────────────────────────┼───────────────────┐
-│  EventBridge │────▶│  Lambda 1: Report Pipeline      │                   │
-│  (Daily)     │     │  RSS → Dedup → Filter → Tag ────┘                   │
-└──────────────┘     │  → Classify → Research → Report → Graph → Store     │
-                     └──────────────────────────┬──────────────────────────┘
-                                                │ async invoke
-                     ┌──────────────────────────▼────────────────────────────┐
-                     │  Lambda 2: Website Builder                            │
-                     │  Read CSV → Generate HTML/CSS/JS → Upload → Invalidate│
-                     └───────┬──────────────────────────────────┬────────────┘
-                             │                                  │
-                     ┌───────▼───────┐                  ┌───────▼───────┐
-                     │  S3 (Data)    │                  │  S3 (Website) │
-                     │  CSV storage  │                  │  Static files │
-                     └───────────────┘                  └───────┬───────┘
-                                                                │
-                                                        ┌───────▼───────┐
-                                              ┌────────▶│  CloudFront   │◀──── Users
-                                              │         │  + WAF        │
-                                              │         └───────────────┘
-                                              │
-┌─────────────────────────────────────────────┼────────────────────────────┐
-│  Analytics                                  │                            │
-│  ┌────────────┐    ┌──────────┐    ┌────────▼───────┐                    │
-│  │ Browser JS │───▶│ API GW   │───▶│ Lambda 3       │──▶ S3 (Logs)       │
-│  │ (tracking) │    │ POST     │    │ Event Collector│   + CF Access Logs │
-│  └────────────┘    └──────────┘    └────────────────┘                    │
-└──────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph pipeline["Daily content pipeline"]
+        EB1["EventBridge<br/>daily 22:00 UTC"] --> L1["Lambda 1 · Report Pipeline<br/>RSS → dedup → filter → tag → classify<br/>→ research → report → graph → store"]
+        BR["Amazon Bedrock<br/>Sonnet 4.6 · Opus 4.6 · Haiku 4.5"]
+        L1 <--> BR
+        L1 -- "append row" --> DATA[("S3 Data Bucket<br/>announcements.csv<br/>versioned · retained")]
+        L1 -. "async invoke" .-> L2["Lambda 2 · Website Builder<br/>CSV → HTML/CSS/JS → invalidate"]
+        DATA --> L2
+        L2 --> WEB[("S3 Website Bucket<br/>static files")]
+    end
+
+    WEB --> CF["CloudFront + WAF<br/>TLS 1.2+ · security headers"]
+    CF --> U(("Users"))
+
+    subgraph analytics["Analytics & permanent history"]
+        U -- "browser events" --> API["API Gateway<br/>POST /events · throttled"]
+        API --> L3["Lambda 3 · Event Collector<br/>IPs truncated at ingest"]
+        L3 --> LOGS[("S3 Logs Bucket<br/>cloudfront/ + events/ — 90-day expiry<br/>rollups/ — permanent")]
+        CF -- "access logs" --> LOGS
+        EB2["EventBridge<br/>monthly · 3rd 03:00 UTC"] --> L4["Lambda 4 · Analytics Rollup<br/>aggregate month before raw expiry"]
+        L4 -- "12 queries per month" --> ATH["Athena"]
+        ATH -- "scan raw logs" --> LOGS
+        L4 -- "write rollups/" --> LOGS
+        DATA -- "taxonomy tags" --> L4
+    end
+
+    ALARMS["8 CloudWatch alarms<br/>+ $20/day budget"] --> SNS["SNS · ai-radar-alerts"]
 ```
 
-**Key services:** Python 3.11, Amazon Bedrock (Claude Sonnet 4.6 + Opus 4.6 + Haiku 4.5), CDK, S3, CloudFront, WAF, EventBridge, API Gateway
+**Key services:** Python 3.11, Amazon Bedrock (Claude Sonnet 4.6 + Opus 4.6 + Haiku 4.5), CDK, S3, CloudFront, WAF, EventBridge, API Gateway, Athena, CloudWatch, SNS
 
 ## Project Structure
 
@@ -97,6 +92,12 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the [AWS "What's New" 
 │   │   └── builder.py             # HTML/CSS/JS generation
 │   ├── analytics/                  # Lambda 3: Event Collector
 │   │   └── handler.py             # API Gateway → S3 JSONL
+│   ├── analytics_rollup/           # Lambda 4: Monthly Analytics Rollup
+│   │   ├── handler.py             # Scheduled entry point (3rd of month)
+│   │   ├── queries.py             # Athena SQL — shared with analytics_report.py
+│   │   ├── rollup.py              # Month runner: coverage, artifacts, S3 writes
+│   │   ├── topics.py              # Page views → taxonomy tags (dual-slug join)
+│   │   └── aggregate.py           # All-time CSV builder (derivation labels)
 │   └── shared/                     # Shared modules
 │       ├── logger.py              # Structured JSON logging
 │       └── models.py              # Data models (dataclasses)
@@ -105,7 +106,7 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the [AWS "What's New" 
 │   └── stack.py                   # Full stack definition
 ├── scripts/                         # Utility scripts
 │   ├── _common.py                 # Shared helpers (region from Config, bucket lookup, context loading)
-│   ├── analytics_report.py        # Generate analytics CSV report via Athena
+│   ├── analytics_report.py        # Analytics CSV report (--days) + monthly rollup/backfill (--month)
 │   ├── backup.py                  # Backup data (and optionally site) to a local zip
 │   ├── pipeline_health.py         # Pipeline health report (daily run status)
 │   ├── retag_announcements.py     # Retroactively tag existing announcements
@@ -120,7 +121,8 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the [AWS "What's New" 
 ├── docs/                            # Design documents and analysis
 │   ├── taxonomy-analysis.md       # Multi-dimensional tagging taxonomy design
 │   ├── mermaid-style-guide.md     # Visual summary standardization rules
-│   └── audit-remediation-plan.md  # 2026-08 hardening audit: decisions + evidence
+│   ├── audit-remediation-plan.md  # 2026-08 hardening audit: decisions + evidence
+│   └── visual-redesign-plan.md    # 2026-08 visual redesign: decisions + outcomes
 ├── .github/workflows/ci.yml        # CI: tests + zero-config synth + secret hygiene
 ├── setup.sh                         # One-time environment setup
 ├── deploy.sh                        # One-command full deployment (and --destroy)
@@ -222,6 +224,8 @@ The website is automatically rebuilt when the pipeline finishes. Hard-refresh (C
 11. **Storage Manager** appends results to CSV in S3
 12. **Lambda 2** rebuilds the static website from CSV data
 13. **CloudFront** serves the site with WAF protection and access logging
+
+Independently of the daily pipeline, **Lambda 4** runs on the 3rd of each month and rolls the previous month's analytics into permanent artifacts before the 90-day raw-log expiry (see [Analytics](#-analytics)).
 
 ## 🌐 Website Features
 
@@ -370,7 +374,7 @@ Assumptions: ~16 new AI/ML announcements per week (~65/month), low website traff
 | **Bedrock — Sonnet 4.6** (reports) | 65 calls × ~2K input + 4K output tokens | ~$3.25 |
 | **Bedrock — Opus 4.6** (diagrams) | 50 calls × ~2K input + 2K output tokens | ~$7.50 |
 | **Bedrock — Haiku 4.5** (tagging) | 65 calls × ~1K input + 0.5K output tokens | ~$0.10 |
-| **Lambda** (3 functions) | ~35 invocations/day, 1024MB, <5 min total | ~$0.02 |
+| **Lambda** (4 functions) | ~35 invocations/day, 1024MB, <5 min total | ~$0.02 |
 | **S3** (3 buckets) | <50 MB storage, <1K requests/day | ~$0.01 |
 | **CloudFront** | <10K requests, <1 GB transfer | ~$0.10 |
 | **WAF** | 1 Web ACL + 2 rules | ~$6.00 |
