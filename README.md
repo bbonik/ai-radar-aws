@@ -34,47 +34,45 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the [AWS "What's New" 
 - **Research-backed** — follows blog post links and reads documentation for deeper context
 - **5-star importance scoring** — point-based system with an optional geographic preference
 - **Geographic relevance** — opt-in badges show whether announcements are available in your region
+- **Permanent analytics history** — monthly rollups preserve aggregate usage stats beyond the 90-day raw-log window, without retaining personal data
 - **One-command deploy** — `./deploy.sh` sets up the entire stack from scratch
 
 ## 🏗️ Architecture
 
-```
-                                    ┌─────────────────────────────────────┐
-                                    │         Amazon Bedrock              │
-                                    │  Sonnet 4.6 │ Opus 4.6 │ Haiku 4.5  │
-                                    └──────────────────┬──────────────────┘
-                                                       │
-┌──────────────┐     ┌─────────────────────────────────┼───────────────────┐
-│  EventBridge │────▶│  Lambda 1: Report Pipeline      │                   │
-│  (Daily)     │     │  RSS → Dedup → Filter → Tag ────┘                   │
-└──────────────┘     │  → Classify → Research → Report → Graph → Store     │
-                     └──────────────────────────┬──────────────────────────┘
-                                                │ async invoke
-                     ┌──────────────────────────▼────────────────────────────┐
-                     │  Lambda 2: Website Builder                            │
-                     │  Read CSV → Generate HTML/CSS/JS → Upload → Invalidate│
-                     └───────┬──────────────────────────────────┬────────────┘
-                             │                                  │
-                     ┌───────▼───────┐                  ┌───────▼───────┐
-                     │  S3 (Data)    │                  │  S3 (Website) │
-                     │  CSV storage  │                  │  Static files │
-                     └───────────────┘                  └───────┬───────┘
-                                                                │
-                                                        ┌───────▼───────┐
-                                              ┌────────▶│  CloudFront   │◀──── Users
-                                              │         │  + WAF        │
-                                              │         └───────────────┘
-                                              │
-┌─────────────────────────────────────────────┼────────────────────────────┐
-│  Analytics                                  │                            │
-│  ┌────────────┐    ┌──────────┐    ┌────────▼───────┐                    │
-│  │ Browser JS │───▶│ API GW   │───▶│ Lambda 3       │──▶ S3 (Logs)       │
-│  │ (tracking) │    │ POST     │    │ Event Collector│   + CF Access Logs │
-│  └────────────┘    └──────────┘    └────────────────┘                    │
-└──────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph pipeline["Daily content pipeline"]
+        EB1["EventBridge<br/>daily 22:00 UTC"] --> L1["Lambda 1 · Report Pipeline<br/>RSS → dedup → filter → tag → classify<br/>→ research → report → graph → store"]
+        BR["Amazon Bedrock<br/>Sonnet 4.6 · Opus 4.6 · Haiku 4.5"]
+        L1 <--> BR
+        L1 -- "append row" --> DATA[("S3 Data Bucket<br/>announcements.csv<br/>versioned · retained")]
+        L1 -. "async invoke" .-> L2["Lambda 2 · Website Builder<br/>CSV → HTML/CSS/JS → invalidate"]
+        DATA --> L2
+        L2 --> WEB[("S3 Website Bucket<br/>static files")]
+    end
+
+    subgraph delivery["Delivery"]
+        U(("Users")) --> WAF["AWS WAF<br/>rate limiting · managed rules"]
+        WAF --> CF["CloudFront<br/>TLS 1.2+ · security headers"]
+        CF -- "origin fetch (OAC)" --> WEB
+    end
+
+    subgraph analytics["Analytics & permanent history"]
+        U -- "browser events" --> API["API Gateway<br/>POST /events · throttled"]
+        API --> L3["Lambda 3 · Event Collector<br/>IPs truncated at ingest"]
+        L3 --> LOGS[("S3 Logs Bucket<br/>cloudfront/ + events/ — 90-day expiry<br/>rollups/ — permanent")]
+        CF -- "access logs" --> LOGS
+        EB2["EventBridge<br/>monthly · 3rd 03:00 UTC"] --> L4["Lambda 4 · Analytics Rollup<br/>aggregate month before raw expiry"]
+        L4 -- "12 queries per month" --> ATH["Athena"]
+        ATH -- "scan raw logs" --> LOGS
+        L4 -- "write rollups/" --> LOGS
+        DATA -- "taxonomy tags" --> L4
+    end
+
+    ALARMS["8 CloudWatch alarms<br/>+ $20/day budget"] --> SNS["SNS · ai-radar-alerts"]
 ```
 
-**Key services:** Python 3.11, Amazon Bedrock (Claude Sonnet 4.6 + Opus 4.6 + Haiku 4.5), CDK, S3, CloudFront, WAF, EventBridge, API Gateway
+**Key services:** Python 3.11, Amazon Bedrock (Claude Sonnet 4.6 + Opus 4.6 + Haiku 4.5), CDK, S3, CloudFront, WAF, EventBridge, API Gateway, Athena, CloudWatch, SNS
 
 ## Project Structure
 
@@ -97,6 +95,12 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the [AWS "What's New" 
 │   │   └── builder.py             # HTML/CSS/JS generation
 │   ├── analytics/                  # Lambda 3: Event Collector
 │   │   └── handler.py             # API Gateway → S3 JSONL
+│   ├── analytics_rollup/           # Lambda 4: Monthly Analytics Rollup
+│   │   ├── handler.py             # Scheduled entry point (3rd of month)
+│   │   ├── queries.py             # Athena SQL — shared with analytics_report.py
+│   │   ├── rollup.py              # Month runner: coverage, artifacts, S3 writes
+│   │   ├── topics.py              # Page views → taxonomy tags (dual-slug join)
+│   │   └── aggregate.py           # All-time CSV builder (derivation labels)
 │   └── shared/                     # Shared modules
 │       ├── logger.py              # Structured JSON logging
 │       └── models.py              # Data models (dataclasses)
@@ -105,7 +109,7 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the [AWS "What's New" 
 │   └── stack.py                   # Full stack definition
 ├── scripts/                         # Utility scripts
 │   ├── _common.py                 # Shared helpers (region from Config, bucket lookup, context loading)
-│   ├── analytics_report.py        # Generate analytics CSV report via Athena
+│   ├── analytics_report.py        # Analytics CSV report (--days) + monthly rollup/backfill (--month)
 │   ├── backup.py                  # Backup data (and optionally site) to a local zip
 │   ├── pipeline_health.py         # Pipeline health report (daily run status)
 │   ├── retag_announcements.py     # Retroactively tag existing announcements
@@ -120,7 +124,8 @@ Automated AWS AI/ML/GenAI news curation platform. Fetches the [AWS "What's New" 
 ├── docs/                            # Design documents and analysis
 │   ├── taxonomy-analysis.md       # Multi-dimensional tagging taxonomy design
 │   ├── mermaid-style-guide.md     # Visual summary standardization rules
-│   └── audit-remediation-plan.md  # 2026-08 hardening audit: decisions + evidence
+│   ├── audit-remediation-plan.md  # 2026-08 hardening audit: decisions + evidence
+│   └── visual-redesign-plan.md    # 2026-08 visual redesign: decisions + outcomes
 ├── .github/workflows/ci.yml        # CI: tests + zero-config synth + secret hygiene
 ├── setup.sh                         # One-time environment setup
 ├── deploy.sh                        # One-command full deployment (and --destroy)
@@ -168,7 +173,7 @@ That's it. Two commands from zero to a running website (three if you personalize
 |--------|---------|-------------|
 | `./setup.sh` | Check prerequisites, create venv, install deps | First time after cloning |
 | `./deploy.sh` | Full deployment (tests + CDK + deploy) | First deploy or major infra changes |
-| `./deploy.sh --destroy` | Tear down the stack — the **data bucket is retained** (it holds all generated reports); deleting it is a separate, explicit confirmation | Remove the deployment |
+| `./deploy.sh --destroy` | Tear down the stack — the **data bucket is retained** (it holds all generated reports); deleting it is a separate, explicit confirmation. The logs bucket is **not** retained: back up analytics history first with `aws s3 sync s3://<logs-bucket>/rollups/ ./rollups-backup/` | Remove the deployment |
 | `./rebuild-site.sh` | Deploy code + rebuild website | After code changes |
 | `./rebuild-site.sh --skip-cdk` | Just rebuild website (no CDK) | After data-only changes |
 | `./run-pipeline.sh` | Trigger pipeline with live progress | See real-time processing status |
@@ -185,6 +190,8 @@ That's it. Two commands from zero to a running website (three if you personalize
 | `python scripts/backup.py` | Backup data CSV to local zip | Periodic disaster recovery backup |
 | `python scripts/backup.py --full` | Backup data + website files | Full backup including generated HTML |
 | `python scripts/analytics_report.py --days 30` | Generate analytics CSV | Check website usage metrics |
+| `python scripts/analytics_report.py --month 2026-06` | Roll up one month into permanent S3 artifacts | Re-run/repair a single month's rollup |
+| `python scripts/analytics_report.py --month 2026-05 --to 2026-07` | Backfill a range of monthly rollups | After first deploy, or to repair several months still inside the 90-day raw window |
 
 ### Running the Pipeline Manually
 
@@ -221,6 +228,8 @@ The website is automatically rebuilt when the pipeline finishes. Hard-refresh (C
 12. **Lambda 2** rebuilds the static website from CSV data
 13. **CloudFront** serves the site with WAF protection and access logging
 
+Independently of the daily pipeline, **Lambda 4** runs on the 3rd of each month and rolls the previous month's analytics into permanent artifacts before the 90-day raw-log expiry (see [Analytics](#-analytics)).
+
 ## 🌐 Website Features
 
 - **Faceted filtering** — clickable tag chips grouped by dimension (Services, Type, Concepts)
@@ -251,9 +260,52 @@ python scripts/analytics_report.py --days 30 --output report.csv  # Save to file
 python scripts/analytics_report.py --days 30                       # Print to stdout (no file created)
 ```
 
+### Monthly rollups (permanent history)
+
+Raw objects under `cloudfront/` and `events/` **expire 90 days after
+creation**. To keep history, a scheduled Lambda (`ai-radar-analytics-rollup`)
+aggregates each completed calendar month into permanent artifacts before the
+raw data ages out. Once a month's raw data has expired, that month can no
+longer be re-derived — only the stored rollup remains.
+
+- **Schedule**: the 3rd of every month at 03:00 UTC; each run targets the
+  calendar month immediately preceding the invocation date (UTC)
+- **Storage**: the logs bucket (resolved from the `AiRadarAwsStack` output
+  `LogsBucketName`), under the `rollups/` prefix, which no lifecycle rule
+  touches:
+  - `rollups/YYYY-MM.json` — machine-readable rollup (aggregation source of truth)
+  - `rollups/YYYY-MM.csv` — human-readable rollup (same sections as the day-scoped report)
+  - `rollups/all-time.csv` — single fixed key, regenerated after every run
+- **Manual runs / backfill**: `python scripts/analytics_report.py --month
+  2026-06` (single month) or `--month 2026-05 --to 2026-07` (range, max 24).
+  Re-running a month replaces its artifacts idempotently.
+
+How to read the all-time numbers:
+
+- **Additive metrics** (page views, PDF exports, about opens) are exact sums
+  and labelled `exact`
+- **Unique visitors and sessions** are labelled `upper bound`: they are
+  distinct counts per month, so a visitor or session active in two months is
+  counted in both. The per-month maximum and mean are reported alongside
+- **Combined top-N lists** are labelled `approximate`: each monthly rollup
+  stores only its own 30 highest-count rows, so long-tail entries outside a
+  month's top 30 are absent from that month's contribution
+- The totals are marked **partial** when any included month has partial raw
+  coverage (e.g., 2026-05, whose raw data begins 2026-05-11)
+- **Topic visits** join report page views to the announcement taxonomy tags.
+  They are computed over *all* report page views (not a truncated list), so
+  they are exact and sum cleanly across months — the approximation caveat
+  above does not apply. Views for a slug matching multiple announcements
+  (a legacy pre-2026-08-14 slug collision) are reported separately as
+  ambiguous and excluded from topic attribution; views matching no
+  announcement are reported as unattributed. Page-view counts come from
+  CloudFront logs and include bot traffic
+- Rollups contain **aggregate counts only** — no IPs, session IDs, or user
+  agents — so unlimited retention never means unlimited PII retention
+
 ## 🔔 Monitoring & Alerts
 
-The stack provisions six CloudWatch alarms (pipeline errors/timeout/duration, website-builder errors/timeout, CloudFront request spikes) plus a **$20/day cost budget**. All of them publish to the **`ai-radar-alerts`** SNS topic.
+The stack provisions eight CloudWatch alarms (pipeline errors/timeout/duration, website-builder errors/timeout, CloudFront request spikes, monthly-rollup errors and failed schedule invocations) plus a **$20/day cost budget**. All of them publish to the **`ai-radar-alerts`** SNS topic.
 
 - Set `alert_email` in `cdk.context.json` before deploying and confirm the subscription email, and every alarm plus the budget alert reaches your inbox
 - Check pipeline health from the CLI: `python scripts/pipeline_health.py`
@@ -325,13 +377,15 @@ Assumptions: ~16 new AI/ML announcements per week (~65/month), low website traff
 | **Bedrock — Sonnet 4.6** (reports) | 65 calls × ~2K input + 4K output tokens | ~$3.25 |
 | **Bedrock — Opus 4.6** (diagrams) | 50 calls × ~2K input + 2K output tokens | ~$7.50 |
 | **Bedrock — Haiku 4.5** (tagging) | 65 calls × ~1K input + 0.5K output tokens | ~$0.10 |
-| **Lambda** (3 functions) | ~35 invocations/day, 1024MB, <5 min total | ~$0.02 |
+| **Lambda** (4 functions) | ~35 invocations/day, 1024MB, <5 min total | ~$0.02 |
 | **S3** (3 buckets) | <50 MB storage, <1K requests/day | ~$0.01 |
 | **CloudFront** | <10K requests, <1 GB transfer | ~$0.10 |
 | **WAF** | 1 Web ACL + 2 rules | ~$6.00 |
 | **API Gateway** (analytics) | <10K requests | ~$0.01 |
-| **EventBridge** | 1 rule, 30 invocations | ~$0.00 |
-| **CloudWatch** (logs + alarms) | 6 alarms, minimal logs | ~$0.50 |
+| **EventBridge** | 2 rules, 31 invocations | ~$0.00 |
+| **CloudWatch** (logs + alarms) | 8 alarms, minimal logs | ~$0.50 |
+| **Athena** (monthly rollup) | 1 scheduled run: 12 queries + 3 DDL statements, ~10 MB min billed scan each | ~$0.01 |
+| **S3** (`rollups/` history) | ~4 KB added per month, permanent | ~$0.00 |
 | | | |
 | **Total** | | **~$18/month** |
 

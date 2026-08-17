@@ -81,8 +81,9 @@ class TestResourceCounts:
         assert len(resources) >= 1
 
     def test_cloudwatch_alarms_created(self, template):
-        """Stack should create 6 CloudWatch alarms (5 Lambda + 1 CloudFront)."""
-        template.resource_count_is("AWS::CloudWatch::Alarm", 6)
+        """Stack should create 8 CloudWatch alarms (5 Lambda + 1 CloudFront
+        + 2 monthly-rollup: Rollup-Errors, Rollup-FailedInvocations)."""
+        template.resource_count_is("AWS::CloudWatch::Alarm", 8)
 
 
 class TestLambdaConfiguration:
@@ -502,7 +503,9 @@ class TestAlarmNotifications:
     def test_every_alarm_has_an_action(self, template):
         """No alarm may transition to ALARM silently."""
         alarms = template.find_resources("AWS::CloudWatch::Alarm")
-        assert len(alarms) == 6
+        # 6 original + 2 monthly-rollup alarms (Rollup-Errors,
+        # Rollup-FailedInvocations) — see tests/test_cdk_stack_rollup.py
+        assert len(alarms) == 8
         for logical_id, resource in alarms.items():
             actions = resource["Properties"].get("AlarmActions", [])
             assert len(actions) >= 1, f"{logical_id} has no alarm action"
