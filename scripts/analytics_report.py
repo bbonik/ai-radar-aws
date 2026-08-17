@@ -1,327 +1,110 @@
 #!/usr/bin/env python3
-"""Generate analytics report from CloudFront logs and custom events.
+"""Generate analytics reports and monthly rollups from CloudFront logs + events.
 
-Creates Athena tables (if needed), runs queries, and outputs a CSV report.
+Two modes sharing one query implementation (src/analytics_rollup/):
 
-Usage:
-    python scripts/analytics_report.py
+Day-scoped (default, backward compatible):
+    python scripts/analytics_report.py                # last 7 days, stdout
     python scripts/analytics_report.py --days 30
     python scripts/analytics_report.py --output report.csv
+
+Month-scoped (writes permanent rollups under s3://<logs-bucket>/rollups/):
+    python scripts/analytics_report.py --month 2026-06
+    python scripts/analytics_report.py --month 2026-05 --to 2026-07   # backfill
+
+The two modes are mutually exclusive. Month mode replaces any existing
+rollup for the same month (idempotent) and regenerates rollups/all-time.csv.
 """
 import argparse
-import csv
-import io
 import os
 import sys
-import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import boto3
 
-from scripts._common import STACK_NAME, deployed_region
+from scripts._common import STACK_NAME, deployed_region, find_stack_bucket
+from src.analytics_rollup import aggregate, queries, topics
+from src.analytics_rollup.rollup import (
+    AthenaRunner,
+    ensure_tables,
+    parse_scalar,
+    ranked_entries,
+    render_report_csv,
+    run_month,
+)
 
-
-# ─── Configuration ────────────────────────────────────────────────────────────
-
-ATHENA_DATABASE = "ai_radar_analytics"
-ATHENA_WORKGROUP = "primary"
 REGION = deployed_region()
+CATALOG_KEY = "database/announcements.csv"
+MAX_MONTHS_PER_INVOCATION = 24
 
 
-def get_stack_outputs():
-    """Retrieve bucket names from CloudFormation stack outputs."""
-    cfn = boto3.client("cloudformation", region_name=REGION)
-    try:
-        response = cfn.describe_stacks(StackName=STACK_NAME)
-    except cfn.exceptions.ClientError as e:
-        print(f"Error: Could not find stack '{STACK_NAME}': {e}")
-        sys.exit(1)
-
-    outputs = {}
-    for output in response["Stacks"][0].get("Outputs", []):
-        outputs[output["OutputKey"]] = output["OutputValue"]
-
-    return outputs
+def build_clients():
+    s3 = boto3.client("s3", region_name=REGION)
+    athena = boto3.client("athena", region_name=REGION)
+    return s3, athena
 
 
-def get_bucket_names(outputs):
-    """Extract logs bucket name from stack outputs or describe stack resources."""
-    # Try to get from outputs first
-    logs_bucket = outputs.get("LogsBucketName", "")
-
-    # If not in outputs, look up via stack resources
-    if not logs_bucket:
-        cfn = boto3.client("cloudformation", region_name=REGION)
-        resources = cfn.list_stack_resources(StackName=STACK_NAME)
-        for r in resources.get("StackResourceSummaries", []):
-            if r["LogicalResourceId"] == "LogsBucket":
-                logs_bucket = r["PhysicalResourceId"]
-
-    return logs_bucket
+def load_slug_index(s3, data_bucket):
+    """Read the announcement catalog once per invocation (Req 9.9)."""
+    body = s3.get_object(Bucket=data_bucket, Key=CATALOG_KEY)["Body"].read().decode("utf-8")
+    return topics.build_slug_index(topics.load_catalog(body))
 
 
-def run_athena_query(athena, query, output_location, database=None):
-    """Execute an Athena query and wait for completion. Returns query execution ID."""
-    params = {
-        "QueryString": query,
-        "ResultConfiguration": {"OutputLocation": output_location},
-        "WorkGroup": ATHENA_WORKGROUP,
-    }
-    if database:
-        params["QueryExecutionContext"] = {"Database": database}
+def run_day_mode(days, output_file):
+    """Day-scoped report: original behaviour + Topic Visits + 30-row lists."""
+    print("AI Radar AWS - Analytics Report Generator")
+    print("=" * 50)
+    print("\nRetrieving stack configuration...")
+    logs_bucket = find_stack_bucket("LogsBucket", REGION)
+    data_bucket = find_stack_bucket("DataBucket", REGION)
+    print(f"  Logs bucket: {logs_bucket}")
 
-    response = athena.start_query_execution(**params)
-    execution_id = response["QueryExecutionId"]
+    s3, athena = build_clients()
+    runner = AthenaRunner(athena, f"s3://{logs_bucket}/athena-results/")
 
-    # Wait for query to complete
-    while True:
-        result = athena.get_query_execution(QueryExecutionId=execution_id)
-        state = result["QueryExecution"]["Status"]["State"]
-        if state in ("SUCCEEDED", "FAILED", "CANCELLED"):
-            break
-        time.sleep(1)
-
-    if state != "SUCCEEDED":
-        reason = result["QueryExecution"]["Status"].get("StateChangeReason", "Unknown")
-        print(f"  Query failed ({state}): {reason}")
-        print(f"  Query: {query[:200]}...")
-        return None
-
-    return execution_id
-
-
-def get_query_results(athena, execution_id):
-    """Fetch all result rows from a completed Athena query."""
-    rows = []
-    paginator = athena.get_paginator("get_query_results")
-    for page in paginator.paginate(QueryExecutionId=execution_id):
-        result_set = page["ResultSet"]
-        for row in result_set["Rows"]:
-            rows.append([col.get("VarCharValue", "") for col in row["Data"]])
-    return rows
-
-
-def setup_database(athena, output_location, logs_bucket):
-    """Create Athena database and tables if they don't exist."""
     print("Setting up Athena database and tables...")
+    ensure_tables(runner, logs_bucket)
 
-    # Create database
-    run_athena_query(
-        athena,
-        f"CREATE DATABASE IF NOT EXISTS {ATHENA_DATABASE}",
-        output_location,
-    )
+    now = datetime.now(timezone.utc)
+    start, end = queries.window_for_days(days, now)
 
-    # Create CloudFront logs table (standard log format)
-    cf_table_query = f"""
-    CREATE EXTERNAL TABLE IF NOT EXISTS {ATHENA_DATABASE}.cloudfront_logs (
-        `date` DATE,
-        `time` STRING,
-        x_edge_location STRING,
-        sc_bytes BIGINT,
-        c_ip STRING,
-        cs_method STRING,
-        cs_host STRING,
-        cs_uri_stem STRING,
-        sc_status INT,
-        cs_referer STRING,
-        cs_user_agent STRING,
-        cs_uri_query STRING,
-        cs_cookie STRING,
-        x_edge_result_type STRING,
-        x_edge_request_id STRING,
-        x_host_header STRING,
-        cs_protocol STRING,
-        cs_bytes BIGINT,
-        time_taken FLOAT,
-        x_forwarded_for STRING,
-        ssl_protocol STRING,
-        ssl_cipher STRING,
-        x_edge_response_result_type STRING,
-        cs_protocol_version STRING,
-        fle_status STRING,
-        fle_encrypted_fields INT,
-        c_port INT,
-        time_to_first_byte FLOAT,
-        x_edge_detailed_result_type STRING,
-        sc_content_type STRING,
-        sc_content_len BIGINT,
-        sc_range_start BIGINT,
-        sc_range_end BIGINT
-    )
-    ROW FORMAT DELIMITED
-    FIELDS TERMINATED BY '\\t'
-    LOCATION 's3://{logs_bucket}/cloudfront/'
-    TBLPROPERTIES ('skip.header.line.count'='2')
-    """
-    run_athena_query(athena, cf_table_query, output_location)
-
-    # Create custom events table (JSONL format)
-    events_table_query = f"""
-    CREATE EXTERNAL TABLE IF NOT EXISTS {ATHENA_DATABASE}.custom_events (
-        event_type STRING,
-        path STRING,
-        report_slug STRING,
-        tag STRING,
-        dimension STRING,
-        session_id STRING,
-        `timestamp` STRING,
-        server_timestamp STRING,
-        source_ip STRING,
-        user_agent STRING
-    )
-    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
-    LOCATION 's3://{logs_bucket}/events/'
-    """
-    run_athena_query(athena, events_table_query, output_location)
-
-    print("  Database and tables ready.")
-
-
-def run_analytics_queries(athena, output_location, days):
-    """Run analytics queries and return results as a dict."""
-    date_filter = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
-    results = {}
-
-    queries = {
-        "total_pageviews_cf": f"""
-            SELECT COUNT(*) as total_requests
-            FROM {ATHENA_DATABASE}.cloudfront_logs
-            WHERE date >= DATE('{date_filter}')
-            AND cs_uri_stem LIKE '%.html'
-            AND sc_status = 200
-        """,
-        "unique_visitors_cf": f"""
-            SELECT COUNT(DISTINCT c_ip) as unique_ips
-            FROM {ATHENA_DATABASE}.cloudfront_logs
-            WHERE date >= DATE('{date_filter}')
-            AND sc_status = 200
-        """,
-        "top_pages_cf": f"""
-            SELECT cs_uri_stem, COUNT(*) as hits
-            FROM {ATHENA_DATABASE}.cloudfront_logs
-            WHERE date >= DATE('{date_filter}')
-            AND cs_uri_stem LIKE '%.html'
-            AND sc_status = 200
-            GROUP BY cs_uri_stem
-            ORDER BY hits DESC
-            LIMIT 20
-        """,
-        "total_sessions_events": f"""
-            SELECT COUNT(DISTINCT session_id) as sessions
-            FROM {ATHENA_DATABASE}.custom_events
-            WHERE server_timestamp >= '{date_filter}'
-        """,
-        "pageviews_events": f"""
-            SELECT COUNT(*) as pageviews
-            FROM {ATHENA_DATABASE}.custom_events
-            WHERE event_type = 'pageview'
-            AND server_timestamp >= '{date_filter}'
-        """,
-        "report_clicks": f"""
-            SELECT report_slug, COUNT(*) as clicks
-            FROM {ATHENA_DATABASE}.custom_events
-            WHERE event_type = 'report_click'
-            AND server_timestamp >= '{date_filter}'
-            GROUP BY report_slug
-            ORDER BY clicks DESC
-            LIMIT 20
-        """,
-        "filter_usage": f"""
-            SELECT dimension, tag, COUNT(*) as uses
-            FROM {ATHENA_DATABASE}.custom_events
-            WHERE event_type = 'filter_tag'
-            AND server_timestamp >= '{date_filter}'
-            GROUP BY dimension, tag
-            ORDER BY uses DESC
-            LIMIT 20
-        """,
-        "pdf_exports": f"""
-            SELECT COUNT(*) as exports
-            FROM {ATHENA_DATABASE}.custom_events
-            WHERE event_type = 'pdf_export'
-            AND server_timestamp >= '{date_filter}'
-        """,
-        "about_opens": f"""
-            SELECT COUNT(*) as opens
-            FROM {ATHENA_DATABASE}.custom_events
-            WHERE event_type = 'about_open'
-            AND server_timestamp >= '{date_filter}'
-        """,
-    }
-
-    for name, query in queries.items():
+    print(f"\nRunning analytics queries (last {days} days)...")
+    scalars, ranked = {}, {}
+    for name, build in queries.METRIC_QUERIES.items():
         print(f"  Running: {name}...")
-        execution_id = run_athena_query(athena, query, output_location, ATHENA_DATABASE)
-        if execution_id:
-            rows = get_query_results(athena, execution_id)
-            results[name] = rows
+        rows = runner.execute(build(start, end), queries.ATHENA_DATABASE)
+        if name in queries.SCALAR_METRICS:
+            scalars[name] = parse_scalar(rows, name)
         else:
-            results[name] = []
+            ranked[name] = ranked_entries(rows, name)
 
-    return results
+    print("  Running: report views by slug (topics)...")
+    slug_rows = runner.execute(
+        queries.report_pageviews_by_slug_sql(start, end), queries.ATHENA_DATABASE)
+    slug_views = {}
+    for row in slug_rows[1:]:
+        slug = topics.extract_report_slug(row[0])
+        if slug is not None:
+            slug_views[slug] = slug_views.get(slug, 0) + int(row[1])
+    attribution = topics.attribute(slug_views, load_slug_index(s3, data_bucket))
 
-
-def compile_report(results, days, output_file):
-    """Compile query results into a CSV report."""
-    output = io.StringIO()
-    writer = csv.writer(output)
-
-    writer.writerow(["AI Radar AWS - Analytics Report"])
-    writer.writerow([f"Period: Last {days} days"])
-    writer.writerow([f"Generated: {datetime.now(timezone.utc).isoformat()}"])
-    writer.writerow([])
-
-    # Summary metrics
-    writer.writerow(["=== Summary Metrics ==="])
-    writer.writerow(["Metric", "Value"])
-
-    def get_scalar(key, col=0):
-        rows = results.get(key, [])
-        if len(rows) > 1:
-            return rows[1][col]  # Skip header row
-        return "N/A"
-
-    writer.writerow(["Total Page Views (CloudFront)", get_scalar("total_pageviews_cf")])
-    writer.writerow(["Unique Visitors (CloudFront)", get_scalar("unique_visitors_cf")])
-    writer.writerow(["Total Sessions (Custom Events)", get_scalar("total_sessions_events")])
-    writer.writerow(["Page Views (Custom Events)", get_scalar("pageviews_events")])
-    writer.writerow(["PDF Exports", get_scalar("pdf_exports")])
-    writer.writerow(["About Modal Opens", get_scalar("about_opens")])
-    writer.writerow([])
-
-    # Top pages
-    writer.writerow(["=== Top Pages (CloudFront) ==="])
-    top_pages = results.get("top_pages_cf", [])
-    if top_pages:
-        for row in top_pages:
-            writer.writerow(row)
-    else:
-        writer.writerow(["No data"])
-    writer.writerow([])
-
-    # Report clicks
-    writer.writerow(["=== Top Report Clicks ==="])
-    report_clicks = results.get("report_clicks", [])
-    if report_clicks:
-        for row in report_clicks:
-            writer.writerow(row)
-    else:
-        writer.writerow(["No data"])
-    writer.writerow([])
-
-    # Filter usage
-    writer.writerow(["=== Filter/Tag Usage ==="])
-    filter_usage = results.get("filter_usage", [])
-    if filter_usage:
-        for row in filter_usage:
-            writer.writerow(row)
-    else:
-        writer.writerow(["No data"])
-
-    csv_content = output.getvalue()
+    header = [
+        ["AI Radar AWS - Analytics Report"],
+        [f"Period: Last {days} days"],
+        [f"Generated: {now.isoformat()}"],
+    ]
+    topic_data = {
+        "metrics": [{"dimension": d, "tag": t, "views": v}
+                    for (d, t), v in sorted(attribution.metrics.items())],
+        "total_report_views": attribution.total_report_views,
+        "attributed_views": attribution.attributed_views,
+        "ambiguous": attribution.ambiguous,
+        "ambiguous_views": attribution.ambiguous_views,
+        "unattributed_views": attribution.unattributed_views,
+    }
+    csv_content = render_report_csv(header, scalars, ranked, topic_data)
 
     if output_file:
         with open(output_file, "w") as f:
@@ -329,46 +112,102 @@ def compile_report(results, days, output_file):
         print(f"\nReport saved to: {output_file}")
     else:
         print("\n" + csv_content)
+    print("\nDone.")
+    return 0
 
-    return csv_content
+
+def run_month_mode(start_month, end_month, output_file):
+    """Month-scoped rollup / backfill (Req 4, 10.3, 10.4, 10.7, 10.8)."""
+    # All validation happens before any Athena statement (Req 4.9, 4.10, 9.6).
+    try:
+        months = queries.month_range(start_month, end_month or start_month)
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        return 2
+    if len(months) > MAX_MONTHS_PER_INVOCATION:
+        print(f"Error: range covers {len(months)} months; "
+              f"at most {MAX_MONTHS_PER_INVOCATION} per invocation are supported.")
+        return 2
+    if output_file and len(months) > 1:
+        print("Error: --output requires exactly one Target_Month.")
+        return 2
+
+    print("AI Radar AWS - Monthly Rollup")
+    print("=" * 50)
+    logs_bucket = find_stack_bucket("LogsBucket", REGION)
+    data_bucket = find_stack_bucket("DataBucket", REGION)
+    print(f"  Stack: {STACK_NAME}  Logs bucket: {logs_bucket}")
+
+    s3, athena = build_clients()
+    runner = AthenaRunner(athena, f"s3://{logs_bucket}/athena-results/")
+
+    try:
+        slug_index = load_slug_index(s3, data_bucket)
+    except Exception as exc:  # noqa: BLE001 — catalog unreadable fails the run (Req 13.12)
+        print(f"Error: cannot read catalog {CATALOG_KEY}: {exc}")
+        return 1
+
+    ensure_tables(runner, logs_bucket)
+    now = datetime.now(timezone.utc)
+
+    results = []
+    for month in months:  # ascending (Req 4.2); rejected months don't stop the rest
+        print(f"\nProcessing {month}...")
+        result = run_month(month, runner=runner, s3=s3, logs_bucket=logs_bucket,
+                           slug_index=slug_index, now=now)
+        results.append(result)
+        if result.ok:
+            print(f"  {month}: coverage={result.coverage_status}")
+            for key in result.keys_written:
+                print(f"  wrote s3://{logs_bucket}/{key}")
+            if output_file and result.csv_text:
+                with open(output_file, "w") as f:
+                    f.write(result.csv_text)
+                print(f"  wrote {output_file}")
+        else:
+            kind = "rejected" if result.rejected else "FAILED"
+            print(f"  {month}: {kind} — {result.error}")
+
+    # All_Time_CSV regenerates exactly once per invocation (Req 4.7, 4.8).
+    all_time_key, excluded = aggregate.run_aggregate(s3, logs_bucket)
+    print(f"\nRegenerated s3://{logs_bucket}/{all_time_key}")
+    if excluded:
+        print(f"  WARNING: excluded unreadable rollups: {', '.join(excluded)}")
+    if runner.bytes_scanned > 10 * 1024**3:
+        print(f"  WARNING: scanned {runner.bytes_scanned} bytes "
+              f"across {runner.queries_issued} queries (over 10 GiB ceiling)")
+
+    succeeded = sum(1 for r in results if r.ok)
+    failed = sum(1 for r in results if not r.ok and not r.rejected)
+    rejected = sum(1 for r in results if r.rejected)
+    print(f"\nSummary: {succeeded} succeeded, {failed} failed, {rejected} rejected "
+          f"of {len(results)} requested.")
+    return 1 if failed or rejected else 0
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate AI Radar AWS analytics report")
-    parser.add_argument("--days", type=int, default=7, help="Number of days to analyze (default: 7)")
-    parser.add_argument("--output", type=str, default="", help="Output CSV file path (default: stdout)")
+    parser = argparse.ArgumentParser(
+        description="Generate AI Radar AWS analytics report or monthly rollup")
+    parser.add_argument("--days", type=int, default=None,
+                        help="Day-scoped mode: number of days to analyze (default: 7)")
+    parser.add_argument("--output", type=str, default="",
+                        help="Output CSV file path (default: stdout / S3 only)")
+    parser.add_argument("--month", type=str, default=None,
+                        help="Month-scoped mode: Target_Month as YYYY-MM")
+    parser.add_argument("--to", type=str, default=None, dest="to_month",
+                        help="Inclusive end of a Target_Month range (requires --month)")
     args = parser.parse_args()
 
-    print("AI Radar AWS - Analytics Report Generator")
-    print("=" * 50)
+    if args.month is not None and args.days is not None:
+        print("Error: --days and --month are mutually exclusive.")
+        sys.exit(2)
+    if args.to_month is not None and args.month is None:
+        print("Error: --to requires --month.")
+        sys.exit(2)
 
-    # Get stack outputs
-    print("\nRetrieving stack configuration...")
-    outputs = get_stack_outputs()
-    logs_bucket = get_bucket_names(outputs)
-
-    if not logs_bucket:
-        print("Error: Could not determine logs bucket name from stack.")
-        sys.exit(1)
-
-    print(f"  Logs bucket: {logs_bucket}")
-
-    # Athena output location
-    output_location = f"s3://{logs_bucket}/athena-results/"
-
-    # Setup
-    athena = boto3.client("athena", region_name=REGION)
-    setup_database(athena, output_location, logs_bucket)
-
-    # Run queries
-    print(f"\nRunning analytics queries (last {args.days} days)...")
-    results = run_analytics_queries(athena, output_location, args.days)
-
-    # Compile report
-    print("\nCompiling report...")
-    compile_report(results, args.days, args.output)
-
-    print("\nDone.")
+    if args.month is not None:
+        sys.exit(run_month_mode(args.month, args.to_month, args.output))
+    sys.exit(run_day_mode(args.days if args.days is not None else 7, args.output))
 
 
 if __name__ == "__main__":

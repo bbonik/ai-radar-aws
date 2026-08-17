@@ -168,7 +168,7 @@ That's it. Two commands from zero to a running website (three if you personalize
 |--------|---------|-------------|
 | `./setup.sh` | Check prerequisites, create venv, install deps | First time after cloning |
 | `./deploy.sh` | Full deployment (tests + CDK + deploy) | First deploy or major infra changes |
-| `./deploy.sh --destroy` | Tear down the stack — the **data bucket is retained** (it holds all generated reports); deleting it is a separate, explicit confirmation | Remove the deployment |
+| `./deploy.sh --destroy` | Tear down the stack — the **data bucket is retained** (it holds all generated reports); deleting it is a separate, explicit confirmation. The logs bucket is **not** retained: back up analytics history first with `aws s3 sync s3://<logs-bucket>/rollups/ ./rollups-backup/` | Remove the deployment |
 | `./rebuild-site.sh` | Deploy code + rebuild website | After code changes |
 | `./rebuild-site.sh --skip-cdk` | Just rebuild website (no CDK) | After data-only changes |
 | `./run-pipeline.sh` | Trigger pipeline with live progress | See real-time processing status |
@@ -185,6 +185,8 @@ That's it. Two commands from zero to a running website (three if you personalize
 | `python scripts/backup.py` | Backup data CSV to local zip | Periodic disaster recovery backup |
 | `python scripts/backup.py --full` | Backup data + website files | Full backup including generated HTML |
 | `python scripts/analytics_report.py --days 30` | Generate analytics CSV | Check website usage metrics |
+| `python scripts/analytics_report.py --month 2026-06` | Roll up one month into permanent S3 artifacts | Re-run/repair a single month's rollup |
+| `python scripts/analytics_report.py --month 2026-05 --to 2026-07` | Backfill a range of monthly rollups | After first deploy, or to repair several months still inside the 90-day raw window |
 
 ### Running the Pipeline Manually
 
@@ -251,9 +253,52 @@ python scripts/analytics_report.py --days 30 --output report.csv  # Save to file
 python scripts/analytics_report.py --days 30                       # Print to stdout (no file created)
 ```
 
+### Monthly rollups (permanent history)
+
+Raw objects under `cloudfront/` and `events/` **expire 90 days after
+creation**. To keep history, a scheduled Lambda (`ai-radar-analytics-rollup`)
+aggregates each completed calendar month into permanent artifacts before the
+raw data ages out. Once a month's raw data has expired, that month can no
+longer be re-derived — only the stored rollup remains.
+
+- **Schedule**: the 3rd of every month at 03:00 UTC; each run targets the
+  calendar month immediately preceding the invocation date (UTC)
+- **Storage**: the logs bucket (resolved from the `AiRadarAwsStack` output
+  `LogsBucketName`), under the `rollups/` prefix, which no lifecycle rule
+  touches:
+  - `rollups/YYYY-MM.json` — machine-readable rollup (aggregation source of truth)
+  - `rollups/YYYY-MM.csv` — human-readable rollup (same sections as the day-scoped report)
+  - `rollups/all-time.csv` — single fixed key, regenerated after every run
+- **Manual runs / backfill**: `python scripts/analytics_report.py --month
+  2026-06` (single month) or `--month 2026-05 --to 2026-07` (range, max 24).
+  Re-running a month replaces its artifacts idempotently.
+
+How to read the all-time numbers:
+
+- **Additive metrics** (page views, PDF exports, about opens) are exact sums
+  and labelled `exact`
+- **Unique visitors and sessions** are labelled `upper bound`: they are
+  distinct counts per month, so a visitor or session active in two months is
+  counted in both. The per-month maximum and mean are reported alongside
+- **Combined top-N lists** are labelled `approximate`: each monthly rollup
+  stores only its own 30 highest-count rows, so long-tail entries outside a
+  month's top 30 are absent from that month's contribution
+- The totals are marked **partial** when any included month has partial raw
+  coverage (e.g., 2026-05, whose raw data begins 2026-05-11)
+- **Topic visits** join report page views to the announcement taxonomy tags.
+  They are computed over *all* report page views (not a truncated list), so
+  they are exact and sum cleanly across months — the approximation caveat
+  above does not apply. Views for a slug matching multiple announcements
+  (a legacy pre-2026-08-14 slug collision) are reported separately as
+  ambiguous and excluded from topic attribution; views matching no
+  announcement are reported as unattributed. Page-view counts come from
+  CloudFront logs and include bot traffic
+- Rollups contain **aggregate counts only** — no IPs, session IDs, or user
+  agents — so unlimited retention never means unlimited PII retention
+
 ## 🔔 Monitoring & Alerts
 
-The stack provisions six CloudWatch alarms (pipeline errors/timeout/duration, website-builder errors/timeout, CloudFront request spikes) plus a **$20/day cost budget**. All of them publish to the **`ai-radar-alerts`** SNS topic.
+The stack provisions eight CloudWatch alarms (pipeline errors/timeout/duration, website-builder errors/timeout, CloudFront request spikes, monthly-rollup errors and failed schedule invocations) plus a **$20/day cost budget**. All of them publish to the **`ai-radar-alerts`** SNS topic.
 
 - Set `alert_email` in `cdk.context.json` before deploying and confirm the subscription email, and every alarm plus the budget alert reaches your inbox
 - Check pipeline health from the CLI: `python scripts/pipeline_health.py`
@@ -330,8 +375,10 @@ Assumptions: ~16 new AI/ML announcements per week (~65/month), low website traff
 | **CloudFront** | <10K requests, <1 GB transfer | ~$0.10 |
 | **WAF** | 1 Web ACL + 2 rules | ~$6.00 |
 | **API Gateway** (analytics) | <10K requests | ~$0.01 |
-| **EventBridge** | 1 rule, 30 invocations | ~$0.00 |
-| **CloudWatch** (logs + alarms) | 6 alarms, minimal logs | ~$0.50 |
+| **EventBridge** | 2 rules, 31 invocations | ~$0.00 |
+| **CloudWatch** (logs + alarms) | 8 alarms, minimal logs | ~$0.50 |
+| **Athena** (monthly rollup) | 1 scheduled run: 12 queries + 3 DDL statements, ~10 MB min billed scan each | ~$0.01 |
+| **S3** (`rollups/` history) | ~4 KB added per month, permanent | ~$0.00 |
 | | | |
 | **Total** | | **~$18/month** |
 

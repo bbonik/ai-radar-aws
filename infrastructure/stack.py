@@ -71,6 +71,8 @@ LAMBDA_ASSET_EXCLUDES = [
     "docs",
     "scripts",
     ".vscode",
+    "tmp",
+    "temp",
     # Local artefacts and secrets — never ship
     "*.zip",
     "backups",
@@ -744,6 +746,120 @@ class AiRadarAwsStack(Stack):
             ),
             notifications_with_subscribers=budget_notifications,
         )
+
+        # ─── Analytics Rollup Lambda (Monthly History) ────────────────────
+        # Aggregates each completed calendar month's analytics into permanent
+        # artifacts under s3://<logs-bucket>/rollups/ before the 90-day
+        # lifecycle rules delete the raw logs. Runs on the 3rd at 03:00 UTC:
+        # ~51h settle delay for CloudFront log delivery, and the whole target
+        # month stays inside the 90-day raw window with ~25 days of slack.
+        # Spec: .kiro/specs/monthly-analytics-rollup/design.md
+        self.rollup_lambda = lambda_.Function(
+            self,
+            "AnalyticsRollupLambda",
+            function_name="ai-radar-analytics-rollup",
+            runtime=lambda_.Runtime.PYTHON_3_11,
+            handler="src.analytics_rollup.handler.handler",
+            code=lambda_.Code.from_asset(".", exclude=LAMBDA_ASSET_EXCLUDES),
+            timeout=Duration.minutes(15),
+            memory_size=256,
+            # A queued duplicate run is an idempotent replace, but two
+            # concurrent runs writing the same keys would be pointless churn.
+            reserved_concurrent_executions=1,
+            environment={
+                "LOGS_BUCKET_NAME": self.logs_bucket.bucket_name,
+                "DATA_BUCKET_NAME": self.data_bucket.bucket_name,
+            },
+        )
+
+        self.rollup_schedule_rule = events.Rule(
+            self,
+            "MonthlyRollupRule",
+            schedule=events.Schedule.cron(
+                minute="0", hour="3", day="3", month="*", year="*"
+            ),
+        )
+        self.rollup_schedule_rule.add_target(
+            # Two async retries on error/timeout; safe because re-runs are
+            # idempotent replaces (retry spacing is platform-managed).
+            targets.LambdaFunction(self.rollup_lambda, retry_attempts=2)
+        )
+
+        # Least privilege: read raw prefixes, read+put (no delete) on
+        # rollups/ and athena-results/, read-only on the catalog CSV.
+        self.logs_bucket.grant_read(self.rollup_lambda, "cloudfront/*")
+        self.logs_bucket.grant_read(self.rollup_lambda, "events/*")
+        self.logs_bucket.grant_read(self.rollup_lambda, "rollups/*")
+        self.logs_bucket.grant_put(self.rollup_lambda, "rollups/*")
+        self.logs_bucket.grant_read(self.rollup_lambda, "athena-results/*")
+        self.logs_bucket.grant_put(self.rollup_lambda, "athena-results/*")
+        self.data_bucket.grant_read(self.rollup_lambda, "database/announcements.csv")
+
+        # Athena on the primary workgroup + Glue catalog objects needed by
+        # the three CREATE ... IF NOT EXISTS statements.
+        self.rollup_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "athena:StartQueryExecution",
+                    "athena:GetQueryExecution",
+                    "athena:GetQueryResults",
+                ],
+                resources=[
+                    f"arn:aws:athena:{Aws.REGION}:{Aws.ACCOUNT_ID}:workgroup/primary",
+                ],
+            )
+        )
+        self.rollup_lambda.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "glue:CreateDatabase",
+                    "glue:GetDatabase",
+                    "glue:CreateTable",
+                    "glue:GetTable",
+                    "glue:GetPartitions",
+                ],
+                resources=[
+                    f"arn:aws:glue:{Aws.REGION}:{Aws.ACCOUNT_ID}:catalog",
+                    f"arn:aws:glue:{Aws.REGION}:{Aws.ACCOUNT_ID}:database/ai_radar_analytics",
+                    f"arn:aws:glue:{Aws.REGION}:{Aws.ACCOUNT_ID}:table/ai_radar_analytics/*",
+                ],
+            )
+        )
+
+        # Rollup alarms → the existing alert topic. A literal "no invocation
+        # in 31 days" heartbeat alarm is not expressible (CloudWatch caps an
+        # alarm's evaluation range at one day), so failed-run coverage is:
+        # Lambda Errors (fired but failed, incl. all retries) + EventBridge
+        # FailedInvocations (rule fired but could not invoke the target).
+        # Design amendment A3 records this decision.
+        self.rollup_errors_alarm = cloudwatch.Alarm(
+            self,
+            "RollupErrorsAlarm",
+            alarm_name="Rollup-Errors",
+            metric=self.rollup_lambda.metric_errors(),
+            threshold=1,
+            evaluation_periods=1,
+            comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            alarm_description="Monthly analytics rollup failed",
+        )
+        self.rollup_failed_invocations_alarm = cloudwatch.Alarm(
+            self,
+            "RollupFailedInvocationsAlarm",
+            alarm_name="Rollup-FailedInvocations",
+            metric=cloudwatch.Metric(
+                namespace="AWS/Events",
+                metric_name="FailedInvocations",
+                dimensions_map={"RuleName": self.rollup_schedule_rule.rule_name},
+                statistic="Sum",
+                period=Duration.hours(1),
+            ),
+            threshold=1,
+            evaluation_periods=1,
+            comparison_operator=cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            alarm_description="Monthly rollup schedule could not invoke its target",
+        )
+        for alarm in (self.rollup_errors_alarm, self.rollup_failed_invocations_alarm):
+            alarm.add_alarm_action(cw_actions.SnsAction(self.alert_topic))
 
         # ─── Stack Outputs ────────────────────────────────────────────────
         CfnOutput(
